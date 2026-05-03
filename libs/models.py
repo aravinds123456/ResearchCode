@@ -38,6 +38,8 @@ def get_sampler(model_name: str):
         return AnthropicSampler(**config)
     elif model_name.startswith("kimi_openrouter-"):
         return OpenRouterSampler(**config)
+    elif model_name.startswith("kimi_openrouter-"):
+        return OpenRouterSampler(**config)
     elif model_name.startswith("kimi-"):
         return KimiSampler(**config)
     elif model_name.startswith("gemini-"):
@@ -767,6 +769,18 @@ MODEL_REGISTRY = {
         "model": "z-ai/glm-5",
         "temperature": 0.0,
         "thinking": True,
+    },
+    "glm-5-websearch": {
+        "model": "z-ai/glm-5",
+        "temperature": 0.0,
+        "thinking": False,
+        "websearch": True,
+    },
+    "glm-5-thinking-websearch": {
+        "model": "z-ai/glm-5",
+        "temperature": 0.0,
+        "thinking": True,
+        "websearch": True,
     },
     "glm-5-websearch": {
         "model": "z-ai/glm-5",
