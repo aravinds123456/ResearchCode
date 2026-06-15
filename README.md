@@ -6,6 +6,8 @@ A framework for evaluating hallucinations in multi-turn conversations across cha
 
 Check out our website for the updates on newly released models: https://halluhard.com/
 
+[Updtae: Jun 15, 2026] We updated the seed questions for the legal cases domain. The duplicated entries are replaced with fresh new entries from same law task categories. 
+
 [Update: Apr 30, 2026] Added GPT-5.5-thinking, Claude-Opus-4.7, and DeepSeek-V4-Pro
 
 [Update: Apr 23, 2026] Added Kimi-K2.6-thinking
