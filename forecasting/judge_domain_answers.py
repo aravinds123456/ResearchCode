@@ -4,7 +4,7 @@ Requires GOOGLE_API_KEY or GEMINI_API_KEY.
 
 Example:
   python forecasting/judge_domain_answers.py --domain research
-  python forecasting/judge_domain_answers.py --domain all
+  python forecasting/judge_domain_answers.py --domain all --n 50
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from domain_config import DOMAINS
+
+DEFAULT_MODEL = os.environ.get("GEMINI_JUDGE_MODEL", "gemini-2.5-flash")
 
 JUDGE_PROMPT = """You are judging whether an AI assistant answer contains factual hallucinations.
 
@@ -46,19 +48,26 @@ def get_gemini_client():
 
     try:
         from google import genai
+        from google.genai import types
     except ImportError as e:
         raise RuntimeError("pip install google-genai") from e
 
-    return genai.Client(api_key=api_key)
+    return genai.Client(api_key=api_key), types
 
 
-def judge(client, question: str, answer: str) -> str:
+def judge(client, types, question: str, answer: str, model: str) -> str:
     prompt = JUDGE_PROMPT.format(question=question[:3000], answer=answer[:4000])
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model=model,
         contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.0,
+            max_output_tokens=256,
+        ),
     )
-    text = response.text.strip()
+    text = (response.text or "").strip()
+    if not text:
+        raise RuntimeError(f"Empty Gemini response from model={model}")
     if not text.startswith("Overall label:"):
         if "Hallucinating" in text and "Not Hallucinating" not in text.split("\n")[0]:
             return "Overall label: Hallucinating\n\n" + text
@@ -66,22 +75,29 @@ def judge(client, question: str, answer: str) -> str:
     return text
 
 
-def process_file(client, path: Path) -> None:
+def save_rows(path: Path, rows: list[dict]) -> None:
+    with open(path, "w", encoding="utf-8") as out:
+        for row in rows:
+            out.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def process_file(client, types, path: Path, model: str, n: int | None) -> None:
     rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
     if not rows:
         print(f"  No rows in {path.name}; skipping.")
         return
-    with open(path, "w", encoding="utf-8") as out:
-        for i, row in enumerate(rows, 1):
-            if row.get("gemini_judgement", "").strip().startswith("Overall label:"):
-                out.write(json.dumps(row, ensure_ascii=False) + "\n")
-                continue
-            label = judge(client, row["question"], row["qwen_answer"])
-            row["gemini_judgement"] = label
-            out.write(json.dumps(row, ensure_ascii=False) + "\n")
-            short = label.split("\n", 1)[0]
-            print(f"[{i}/{len(rows)}] q{row['question_number']} -> {short}")
-            time.sleep(0.5)
+    if n is not None:
+        rows = rows[:n]
+
+    for i, row in enumerate(rows, 1):
+        if row.get("gemini_judgement", "").strip().startswith("Overall label:"):
+            continue
+        label = judge(client, types, row["question"], row["qwen_answer"], model)
+        row["gemini_judgement"] = label
+        save_rows(path, rows)
+        short = label.split("\n", 1)[0]
+        print(f"[{i}/{len(rows)}] q{row['question_number']} -> {short}")
+        time.sleep(0.2)
 
 
 def main() -> None:
@@ -91,10 +107,23 @@ def main() -> None:
         choices=[*DOMAINS.keys(), "all"],
         default="all",
     )
+    parser.add_argument(
+        "--n",
+        type=int,
+        default=None,
+        help="Optional cap on rows to judge per domain file.",
+    )
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help=f"Gemini model id (default: {DEFAULT_MODEL}).",
+    )
     args = parser.parse_args()
 
-    client = get_gemini_client()
+    client, types = get_gemini_client()
     domains = list(DOMAINS) if args.domain == "all" else [args.domain]
+
+    print(f"Using Gemini model: {args.model}")
 
     for domain in domains:
         path = DOMAINS[domain]["output_path"]
@@ -105,7 +134,7 @@ def main() -> None:
             )
             continue
         print(f"Judging {domain} -> {path.name}")
-        process_file(client, path)
+        process_file(client, types, path, args.model, args.n)
 
     print("Next: python forecasting/merge_batch_results.py")
 
