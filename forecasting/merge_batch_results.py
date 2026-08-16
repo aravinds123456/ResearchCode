@@ -1,20 +1,24 @@
 """Merge domain batch files into one batch_results.jsonl.
 
 Keeps hallucinating label if ANY duplicate question_number was hallucinating.
+
+By default only merges the 3 domain batch files (your new Qwen runs).
+Use --include-legacy to also pull in old batch_results.jsonl and other sources.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
 from domain_config import DOMAINS, MERGED_OUTPUT, FORECASTING_DIR
 
-INPUT_FILES = [
+DOMAIN_FILES = [cfg["output_path"] for cfg in DOMAINS.values()]
+LEGACY_FILES = [
     MERGED_OUTPUT,
     FORECASTING_DIR / "qwen_answers.jsonl",
     Path("HallucinationResearch-main/batch_results.jsonl"),
-    *[cfg["output_path"] for cfg in DOMAINS.values()],
 ]
 
 
@@ -92,10 +96,23 @@ def merge_record(existing: dict | None, new: dict) -> dict:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Merge domain batch files.")
+    parser.add_argument(
+        "--include-legacy",
+        action="store_true",
+        help="Also merge old batch_results.jsonl, qwen_answers.jsonl, etc.",
+    )
+    args = parser.parse_args()
+
+    if args.include_legacy:
+        input_files = [*LEGACY_FILES, *DOMAIN_FILES]
+    else:
+        input_files = DOMAIN_FILES
+
     merged: dict[int, dict] = {}
     fallback_id = 0
 
-    for path in INPUT_FILES:
+    for path in input_files:
         if not path.exists():
             continue
         count = 0
