@@ -11,7 +11,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from config import CASCADE_RESULTS_PATH, FUTURE_TURNS_PATH
+FUTURE_TURNS_PATH = SCRIPT_DIR / "future_turns.jsonl"
+CASCADE_RESULTS_PATH = SCRIPT_DIR / "factscore_cascade_results.jsonl"
+
 from factscore_utils import classify_trajectory, judge_answer
 
 TURN_FIELDS = [
