@@ -11,10 +11,10 @@ from pathlib import Path
 from domain_config import DOMAINS, MERGED_OUTPUT, FORECASTING_DIR
 
 INPUT_FILES = [
-    *[cfg["output_path"] for cfg in DOMAINS.values()],
+    MERGED_OUTPUT,
     FORECASTING_DIR / "qwen_answers.jsonl",
     Path("HallucinationResearch-main/batch_results.jsonl"),
-    MERGED_OUTPUT,
+    *[cfg["output_path"] for cfg in DOMAINS.values()],
 ]
 
 
