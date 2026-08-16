@@ -23,12 +23,13 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from domain_config import DOMAINS
 
-# New API keys often cannot use gemini-2.5-*; try newer models first.
+# New accounts get AQ.* auth keys and newer model IDs (not gemini-2.5-*).
 DEFAULT_MODEL = os.environ.get("GEMINI_JUDGE_MODEL", "gemini-3.1-flash-lite")
 FALLBACK_MODELS = [
-    "gemini-3.1-flash-lite",
+    "gemini-3.6-flash",
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
     "gemini-2.5-flash-lite",
     "gemini-2.5-flash",
 ]
@@ -51,11 +52,12 @@ You may add brief claim-level notes after the first line."""
 
 
 def get_gemini_client():
-    api_key = (os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or "").strip()
+    api_key = (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or "").strip()
     if not api_key or api_key in {"your_key", "your_key_here"}:
         raise RuntimeError(
-            "Set a valid GOOGLE_API_KEY from https://aistudio.google.com/apikey\n"
-            "Example: export GOOGLE_API_KEY='AIza...'"
+            "Set a valid GEMINI_API_KEY from https://aistudio.google.com/apikey\n"
+            "New keys start with AQ. (auth keys). Example:\n"
+            "  export GEMINI_API_KEY='AQ.Ab...'"
         )
 
     try:
@@ -99,9 +101,11 @@ def generate_with_fallback(client, types, prompt: str, preferred_model: str) -> 
             msg = str(exc)
             if "API_KEY_INVALID" in msg or "API key not valid" in msg:
                 raise RuntimeError(
-                    "Invalid GOOGLE_API_KEY. Create a fresh key at "
-                    "https://aistudio.google.com/apikey and run:\n"
-                    "  export GOOGLE_API_KEY='AIza...'"
+                    "Gemini rejected your API key.\n"
+                    "- Create/copy a fresh key at https://aistudio.google.com/apikey\n"
+                    "- New keys start with AQ. (that is normal)\n"
+                    "- Run: export GEMINI_API_KEY='AQ.Ab...'\n"
+                    "- Upgrade SDK: pip install -U google-genai"
                 ) from exc
             if "404" in msg or "NOT_FOUND" in msg or "no longer available" in msg:
                 print(f"  model {model} unavailable, trying next...")
