@@ -11,10 +11,10 @@ from pathlib import Path
 from domain_config import DOMAINS, MERGED_OUTPUT, FORECASTING_DIR
 
 INPUT_FILES = [
-    MERGED_OUTPUT,
     *[cfg["output_path"] for cfg in DOMAINS.values()],
     FORECASTING_DIR / "qwen_answers.jsonl",
     Path("HallucinationResearch-main/batch_results.jsonl"),
+    MERGED_OUTPUT,
 ]
 
 
@@ -72,11 +72,18 @@ def merge_record(existing: dict | None, new: dict) -> dict:
     if existing is None:
         return new
 
-    # Keep hallucinating if ANY version was hallucinating
-    if is_hallucinating(existing["gemini_judgement"]):
-        new["gemini_judgement"] = existing["gemini_judgement"]
-    elif not new["gemini_judgement"] and existing["gemini_judgement"]:
-        new["gemini_judgement"] = existing["gemini_judgement"]
+    existing_judgment = existing.get("gemini_judgement", "")
+    new_judgment = new.get("gemini_judgement", "")
+    existing_h = is_hallucinating(existing_judgment)
+    new_h = is_hallucinating(new_judgment)
+
+    # Keep hallucinating if ANY duplicate was hallucinating
+    if existing_h and not new_h:
+        new["gemini_judgement"] = existing_judgment
+    elif existing_h and new_h and len(existing_judgment) > len(new_judgment):
+        new["gemini_judgement"] = existing_judgment
+    elif not new_judgment and existing_judgment:
+        new["gemini_judgement"] = existing_judgment
 
     if not new.get("domain") and existing.get("domain"):
         new["domain"] = existing["domain"]
@@ -125,11 +132,28 @@ def main() -> None:
     domains = Counter(r["domain"] for r in merged.values())
     hall = sum(1 for r in merged.values() if is_hallucinating(r["gemini_judgement"]))
     missing = sum(1 for r in merged.values() if not r["gemini_judgement"])
+    hall_by_domain = Counter(
+        r["domain"]
+        for r in merged.values()
+        if is_hallucinating(r["gemini_judgement"])
+    )
 
-    print(f"\nWrote {len(merged)} questions -> {MERGED_OUTPUT}")
+    print(f"\nWrote {len(merged)} unique questions -> {MERGED_OUTPUT}")
     print("By domain:", dict(domains))
-    print(f"Hallucinating: {hall}")
+    print(f"Hallucinating (total): {hall}")
+    print("Hallucinating by domain:", dict(hall_by_domain))
     print(f"Missing gemini_judgement: {missing}")
+
+    missing_domain_files = [
+        domain
+        for domain, cfg in DOMAINS.items()
+        if not cfg["output_path"].exists()
+    ]
+    if missing_domain_files:
+        print(
+            "\nNOTE: These domain files are missing (run generate_domain_answers + judge first):",
+            ", ".join(missing_domain_files),
+        )
 
 
 if __name__ == "__main__":

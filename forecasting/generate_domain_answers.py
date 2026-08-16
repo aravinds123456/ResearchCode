@@ -1,9 +1,10 @@
 """Step A: Run Qwen on research / legal / medical questions (one domain at a time).
 
 Example:
-  python forecasting/generate_domain_answers.py --domain research --n 30
-  python forecasting/generate_domain_answers.py --domain legal --n 30
-  python forecasting/generate_domain_answers.py --domain medical --n 30
+  python forecasting/generate_domain_answers.py --domain research
+  python forecasting/generate_domain_answers.py --domain legal
+  python forecasting/generate_domain_answers.py --domain medical
+  python forecasting/generate_domain_answers.py --domain research --n 50
 """
 
 from __future__ import annotations
@@ -84,8 +85,8 @@ def main() -> None:
     parser.add_argument(
         "--n",
         type=int,
-        default=30,
-        help="How many questions from that domain (default 30).",
+        default=None,
+        help="Optional cap on questions (default: all questions in the domain file).",
     )
     args = parser.parse_args()
 
