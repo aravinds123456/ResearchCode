@@ -1,0 +1,8 @@
+=== HALLUCINATION ===
+legal: 8/20 hallucinating
+medical: 8/20 hallucinating
+research: 2/20 hallucinating
+
+=== CASCADE LABELS ===
+{'corrected': 16, 'isolated': 1, 'snowballing': 1}
+total trajectories: 18
