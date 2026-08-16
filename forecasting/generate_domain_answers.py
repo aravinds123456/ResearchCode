@@ -34,10 +34,30 @@ def get_device() -> str:
     return "cpu"
 
 
+def load_existing_question_numbers(path: Path) -> set[int]:
+    if not path.exists() or path.stat().st_size == 0:
+        return set()
+    done: set[int] = set()
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            done.add(json.loads(line)["question_number"])
+    return done
+
+
 def load_questions(domain: str, n: int | None) -> list[dict]:
     cfg = DOMAINS[domain]
+    data_path = cfg["data_path"]
+    if not data_path.exists():
+        raise SystemExit(
+            f"Domain data file not found for {domain}:\n  {data_path}\n"
+            "Run from the halluhard repo root and make sure you cloned the full repo."
+        )
+
     rows = []
-    with open(cfg["data_path"], encoding="utf-8") as f:
+    with open(data_path, encoding="utf-8") as f:
         for i, line in enumerate(f):
             if n is not None and i >= n:
                 break
@@ -88,21 +108,40 @@ def main() -> None:
         default=None,
         help="Optional cap on questions (default: all questions in the domain file).",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Append to the domain output file and skip question_numbers already written.",
+    )
     args = parser.parse_args()
 
+    cfg = DOMAINS[args.domain]
     questions = load_questions(args.domain, args.n)
     if not questions:
         raise SystemExit(f"No questions loaded for domain={args.domain}")
 
+    out_path = cfg["output_path"]
+    done = load_existing_question_numbers(out_path) if args.resume else set()
+    pending = [q for q in questions if q["question_number"] not in done]
+    if not pending:
+        print(f"Nothing to do: {out_path.name} already has all {len(questions)} questions.")
+        print("Next: python forecasting/judge_domain_answers.py --domain", args.domain)
+        return
+
     device = get_device()
-    print(f"Domain: {args.domain} | Questions: {len(questions)} | Device: {device}")
+    print(f"Domain: {args.domain}")
+    print(f"Data: {cfg['data_path']}")
+    print(f"Output: {out_path}")
+    print(f"Pending: {len(pending)}/{len(questions)} | Device: {device}")
+    if out_path.exists() and out_path.stat().st_size == 0 and not args.resume:
+        print(f"Removing empty placeholder file: {out_path.name}")
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
 
-    out_path = DOMAINS[args.domain]["output_path"]
-    with open(out_path, "w", encoding="utf-8") as out:
-        for i, row in enumerate(questions, 1):
+    write_mode = "a" if args.resume and done else "w"
+    with open(out_path, write_mode, encoding="utf-8") as out:
+        for i, row in enumerate(pending, 1):
             answer = generate_answer(tokenizer, model, device, row["question"])
             record = {
                 "question_number": row["question_number"],
@@ -112,9 +151,10 @@ def main() -> None:
                 "gemini_judgement": "",
             }
             out.write(json.dumps(record, ensure_ascii=False) + "\n")
-            print(f"[{i}/{len(questions)}] wrote question {record['question_number']}")
+            out.flush()
+            print(f"[{i}/{len(pending)}] wrote question {record['question_number']}")
 
-    print(f"Saved -> {out_path}")
+    print(f"Saved -> {out_path} ({out_path.stat().st_size} bytes)")
     print("Next: python forecasting/judge_domain_answers.py --domain", args.domain)
 
 

@@ -144,15 +144,16 @@ def main() -> None:
     print("Hallucinating by domain:", dict(hall_by_domain))
     print(f"Missing gemini_judgement: {missing}")
 
-    missing_domain_files = [
+    empty_domain_files = [
         domain
         for domain, cfg in DOMAINS.items()
-        if not cfg["output_path"].exists()
+        if not cfg["output_path"].exists() or cfg["output_path"].stat().st_size == 0
     ]
-    if missing_domain_files:
+    if empty_domain_files:
         print(
-            "\nNOTE: These domain files are missing (run generate_domain_answers + judge first):",
-            ", ".join(missing_domain_files),
+            "\nNOTE: These domain files are missing or empty "
+            "(run generate_domain_answers, then judge_domain_answers):",
+            ", ".join(empty_domain_files),
         )
 
 

@@ -95,8 +95,11 @@ def main() -> None:
 
     for domain in domains:
         path = DOMAINS[domain]["output_path"]
-        if not path.exists():
-            print(f"SKIP {domain}: missing {path.name} (run generate_domain_answers first)")
+        if not path.exists() or path.stat().st_size == 0:
+            print(
+                f"SKIP {domain}: {path.name} is missing or empty "
+                "(run generate_domain_answers first)"
+            )
             continue
         print(f"Judging {domain} -> {path.name}")
         process_file(client, path)
