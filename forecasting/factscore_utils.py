@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 import requests
 from openai import OpenAI
 
 _client: OpenAI | None = None
+DEFAULT_MODEL = os.environ.get("OPENAI_LABEL_MODEL", "gpt-4o-mini")
 
 
 def get_client() -> OpenAI:
@@ -20,13 +22,38 @@ def get_client() -> OpenAI:
     return _client
 
 
+def parse_json_response(text: str) -> dict:
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        raise
+
+
 def ask(prompt: str) -> dict:
-    response = get_client().chat.completions.create(
-        model="gpt-5-mini",
-        messages=[{"role": "user", "content": prompt}],
-        reasoning_effort="minimal",
-    )
-    return json.loads(response.choices[0].message.content)
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            response = get_client().chat.completions.create(
+                model=DEFAULT_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                response_format={"type": "json_object"},
+            )
+            content = response.choices[0].message.content or ""
+            return parse_json_response(content)
+        except Exception as exc:
+            last_error = exc
+            if attempt < 2:
+                continue
+            raise RuntimeError(f"OpenAI JSON call failed after 3 attempts: {last_error}") from exc
+    raise RuntimeError(f"OpenAI JSON call failed: {last_error}")
 
 
 def search(claim: str) -> list[dict]:
@@ -41,50 +68,51 @@ def search(claim: str) -> list[dict]:
         timeout=30,
     )
     response.raise_for_status()
-    return response.json().get("organic", [])[:5]
+    results = []
+    for item in response.json().get("organic", [])[:5]:
+        results.append(
+            {
+                "title": item.get("title", "")[:200],
+                "snippet": item.get("snippet", "")[:300],
+            }
+        )
+    return results
 
 
 def judge_answer(answer: str) -> list[dict]:
     claims = ask(
-        f"""Extract at most 3 atomic factual claims. Return {{"claims": ["..."]}}.
-        ANSWER: {answer}"""
+        f"""Extract at most 3 atomic factual claims from the answer.
+Return JSON only: {{"claims": ["claim 1", "claim 2"]}}
+
+ANSWER:
+{answer[:3000]}"""
     )["claims"]
 
-    evidence = [
-        {"claim": claim, "search_results": search(claim)}
-        for claim in claims
-    ]
+    evidence = [{"claim": claim, "search_results": search(claim)} for claim in claims]
 
     return ask(
-        f"""Using ONLY the evidence, label each claim as supported or unsupported.
+        f"""Using ONLY the evidence, label each claim supported or unsupported.
+Return JSON only:
+{{"claims": [{{"claim": "...", "label": "supported|unsupported", "reason": "..."}}]}}
 
-        Return:
-        {{"claims": [
-          {{"claim": "...", "label": "...", "reason": "..."}}
-        ]}}
-
-        {json.dumps(evidence)}"""
+EVIDENCE:
+{json.dumps(evidence)[:6000]}"""
     )["claims"]
-
-
-def has_unsupported_claim(claims: list[dict]) -> bool:
-    return any("unsupported" in claim["label"].lower() for claim in claims)
 
 
 def classify_trajectory(judgments: dict) -> dict:
     return ask(
         f"""Classify this trajectory using the original answer, future responses, and claim judgements.
 
-        corrected: A later response explicitly replaces an unsupported original claim with a supported correction.
-        snowballing: A later unsupported claim logically depends on or expands on the initial claim.
-        isolated: The unsupported original claim is NOT corrected, but the later claims do NOT depend on it.
+corrected: A later response explicitly replaces an unsupported original claim with a supported correction.
+snowballing: A later unsupported claim logically depends on or expands on the initial claim.
+isolated: The unsupported original claim is NOT corrected, but the later claims do NOT depend on it.
 
-        Do NOT label a trajectory corrected automatically only because a later response discusses the same topic.
-        You MUST identify the specific original unsupported claim and the later claim connected to it.
+Do NOT label corrected just because a later response discusses the same topic.
 
-        Return:
-        {{"final_label": "corrected|isolated|snowballing",
-          "reason": "..."}}
+Return JSON only:
+{{"final_label": "corrected|isolated|snowballing", "reason": "..."}}
 
-        {json.dumps(judgments)}"""
+TRAJECTORY:
+{json.dumps(judgments)[:8000]}"""
     )
