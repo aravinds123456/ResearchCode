@@ -68,6 +68,9 @@ def judge(client, question: str, answer: str) -> str:
 
 def process_file(client, path: Path) -> None:
     rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+    if not rows:
+        print(f"  No rows in {path.name}; skipping.")
+        return
     with open(path, "w", encoding="utf-8") as out:
         for i, row in enumerate(rows, 1):
             if row.get("gemini_judgement", "").strip().startswith("Overall label:"):
