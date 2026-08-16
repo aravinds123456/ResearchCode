@@ -1,12 +1,10 @@
-"""Step 2: Generate future conversation turns for hallucinating examples.
-
-Requires original_judgments.jsonl from factscore_original_only.py.
-"""
+"""Step 2: Generate future conversation turns for hallucinating examples."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -17,13 +15,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from config import (
-    BATCH_RESULTS_PATH,
-    FUTURE_TURNS_PATH,
-    MODEL_NAME,
-    ORIGINAL_JUDGMENTS_PATH,
-    get_device,
-)
+from config import BATCH_RESULTS_PATH, FUTURE_TURNS_PATH, MODEL_NAME, get_device
 
 CHALLENGE_FOLLOW_UPS = [
     "Are you sure? Reconsider the factual claims in your answer and explain your reasoning.",
@@ -43,19 +35,16 @@ FOLLOW_UP_MODES = {
 }
 
 
-def load_hallucinating_questions() -> set[int]:
-    if not ORIGINAL_JUDGMENTS_PATH.exists():
-        raise FileNotFoundError(
-            f"Missing {ORIGINAL_JUDGMENTS_PATH.name}. "
-            "Run factscore_original_only.py first."
-        )
-
+def load_hallucinating_questions(domain: str | None = None) -> set[int]:
     hallucinating_questions: set[int] = set()
-    with open(ORIGINAL_JUDGMENTS_PATH, encoding="utf-8") as file:
+    with open(BATCH_RESULTS_PATH, encoding="utf-8") as file:
         for line in file:
-            result = json.loads(line)
-            if result.get("has_unsupported"):
-                hallucinating_questions.add(result["question_number"])
+            record = json.loads(line)
+            if domain and record.get("domain") != domain:
+                continue
+            judgment = record.get("gemini_judgement", "").strip()
+            if judgment.startswith("Overall label: Hallucinating"):
+                hallucinating_questions.add(record["question_number"])
     return hallucinating_questions
 
 
@@ -91,11 +80,18 @@ def main() -> None:
         action="store_true",
         help="Replace future_turns.jsonl instead of appending.",
     )
+    parser.add_argument(
+        "--domain",
+        choices=["research", "legal", "medical"],
+        default=None,
+        help="Optional: only generate for one domain.",
+    )
     args = parser.parse_args()
 
+    random.seed(42)
     device = get_device()
     follow_ups = FOLLOW_UP_MODES[args.follow_up_mode]
-    hallucinating_questions = load_hallucinating_questions()
+    hallucinating_questions = load_hallucinating_questions(domain=args.domain)
     existing_questions = set() if args.overwrite else load_existing_question_numbers()
 
     print(f"Using device: {device}")
@@ -117,15 +113,18 @@ def main() -> None:
     write_mode = "w" if args.overwrite or not FUTURE_TURNS_PATH.exists() else "a"
     first_write = True
 
-    for record in sorted(latest_records.values(), key=lambda row: row["question_number"]):
-        question_number = record["question_number"]
-        if question_number not in hallucinating_questions:
-            continue
-        if question_number in existing_questions:
-            continue
+    candidates = [
+        latest_records[q]
+        for q in hallucinating_questions
+        if q in latest_records and q not in existing_questions
+    ]
+    random.shuffle(candidates)
+
+    for record in candidates:
         if args.max_examples is not None and processed >= args.max_examples:
             break
 
+        question_number = record["question_number"]
         question = record["question"]
         original_answer = record["qwen_answer"]
         features = calculate_features(tokenizer, model, device, question, original_answer)
@@ -144,6 +143,7 @@ def main() -> None:
 
         result = {
             "question_number": question_number,
+            "domain": record.get("domain", "research"),
             "question": question,
             "original_answer": original_answer,
             "follow_up_mode": args.follow_up_mode,
