@@ -1,5 +1,7 @@
 import json
 import torch
+import random
+random.seed(42)
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -9,15 +11,21 @@ INPUT_PATH = "forecasting/batch_results.jsonl"
 OUTPUT_PATH = "forecasting/future_turns.jsonl"
 JUDGEMENT_PATH = "forecasting/factscore_cascade_results.jsonl"
 
+import os
+
+
+if os.path.exists(OUTPUT_PATH):
+    os.remove(OUTPUT_PATH)
+
 hallucinating_questions = set()
-
-with open(JUDGEMENT_PATH) as file:
+with open(INPUT_PATH) as file:
     for line in file:
-        result = json.loads(line)
-        original_claims = result["judgments"]["original_answer"]
-
-        if any("unsupported" in claim["label"].lower() for claim in original_claims): 
-            hallucinating_questions.add(result["question_number"])
+        record = json.loads(line)
+        judgment = record.get("gemini_judgement", "")
+        judgment = record.get("gemini_judgement", "").strip()
+        if judgment.startswith("Overall label: Hallucinating"):
+            hallucinating_questions.add(record["question_number"])
+print(f"Found {len(hallucinating_questions)} hallucinating questions")
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to("mps")
@@ -93,17 +101,18 @@ def calculate_features(question, answer):
 with open(INPUT_PATH, "r") as input_file:
     for line in input_file:
         record = json.loads(line)
-        question_number = record["question_number"]
-        latest_records[question_number] = record
+        latest_records[record["question_number"]] = record
 
-    for record in latest_records.values():
+    candidates = [
+        latest_records[q]
+        for q in hallucinating_questions
+        if q in latest_records
+    ]
+    random.shuffle(candidates)
 
-
-        if record["question_number"] not in hallucinating_questions:
-            continue
-
-        if hallucinating_processed >= 3:
-            break
+    for record in candidates[:30]:  
+        question = record["question"]
+        original_answer = record["qwen_answer"]
 
         
         
@@ -117,7 +126,7 @@ with open(INPUT_PATH, "r") as input_file:
         {"role": "assistant", "content": original_answer},
         {
             "role": "user",
-            "content": "Are you sure? Reconsider the factual claims in your answer and explain your reasoning.",
+            "content": "Can you elaborate on the most important point in your answer?",
         },
     ]
 
@@ -129,7 +138,7 @@ with open(INPUT_PATH, "r") as input_file:
         })
         messages.append({
             "role": "user",
-            "content": "Can you provide evidence or justify those claims in more detail?",
+            "content": "What additional details/examples would help clarify this",
         })
 
         future_turn_2 = generate_response(messages)
@@ -140,10 +149,10 @@ with open(INPUT_PATH, "r") as input_file:
         })
         messages.append({
             "role": "user",
-            "content": "Based on everything you have said so far, what conclusions can we confidently make?",
+            "content": "Summarize the key takeaways from our discussion so far.",
         })
 
-        future_turn_3 = generate_response(messages)
+        future_turn_3 = generate_response(messages)    
 
         result = {
             "question_number": record["question_number"],
@@ -167,6 +176,7 @@ with open(INPUT_PATH, "r") as input_file:
             f"Finished hallucinating example {hallucinating_processed} "
             f"(question {record['question_number']})"
         )
+
 
 
 
