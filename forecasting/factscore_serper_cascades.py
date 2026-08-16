@@ -1,93 +1,67 @@
+"""Step 3: Label full conversation trajectories as corrected / isolated / snowballing."""
+
+from __future__ import annotations
+
+import argparse
 import json
-import os
-import requests
-from openai import OpenAI
+import sys
+from pathlib import Path
 
-client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-serper_key = os.environ["SERPER_API_KEY"]
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
-def ask(prompt):
-    response = client.chat.completions.create(
-        model="gpt-5-mini",
-        messages=[{"role": "user", "content": prompt}],
-        reasoning_effort="minimal",
+from config import CASCADE_RESULTS_PATH, FUTURE_TURNS_PATH
+from factscore_utils import classify_trajectory, judge_answer
+
+TURN_FIELDS = [
+    "original_answer",
+    "future_turn_1",
+    "future_turn_2",
+    "future_turn_3",
+]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Label conversation trajectories (pipeline step 3)."
     )
-    return json.loads(response.choices[0].message.content)
-
-
-def search(claim):
-    response = requests.post(
-        "https://google.serper.dev/search",
-        headers={"X-API-KEY": serper_key},
-        json={"q": claim, "num": 5},
-        timeout=30,
+    parser.add_argument(
+        "--max-examples",
+        type=int,
+        default=None,
+        help="Limit how many conversations to label (default: all).",
     )
-    response.raise_for_status()
-    return response.json().get("organic", [])[:5]
+    args = parser.parse_args()
 
-def judge_answer(answer):
-    claims = ask(
-        f"""Extract at most 3 atomic factual claims. Return {{"claims": ["..."]}}.
-        ANSWER: {answer}"""
-    )["claims"]
-
-    evidence = [
-        {"claim": claim, "search_results": search(claim)}
-        for claim in claims
-    ]
-
-    return ask(
-        f"""Using ONLY the evidence, label each claim that is supported or unsupported.  
-        
-        Return:
-        {{"claims": [
-          {{"claim": "...", "label": "...", "reason": "..."}}
-        ]}}
-
-        {json.dumps(evidence)}"""
-
-    )["claims"]
-
-with open("forecasting/future_turns.jsonl") as file:
-    conversations = [json.loads(line) for line in file][:10]
-
-with open("forecasting/factscore_cascade_results.jsonl", "w") as output:
-    for conversation in conversations:
-        judgments = {
-            name: judge_answer(conversation[name])
-            for name in [
-                "original_answer",
-                "future_turn_1",
-                "future_turn_2",
-                "future_turn_3",
-            ]
-        }
-
-        outcome = ask(
-            f"""Classify this trajectory using the original answer, future responses, and claim judgements.
-
-            corrected: A later response explicitly replaces an unsupported original claim with a supported correction.
-            snowballing: A later unsupported claim logically depends on or expans on the initial claimt.
-            isolated: The unsupported original claim is NOT corrected, but the later claims do NOT depend on it.
-
-            Do NOT label a trajectory corrected automatically only because a later response discusses the same topic. 
-            You MUST identify the specific original unsupported claim and the later claim conencted to it.
-
-            Return:
-            {{"final_label": "corrected|isolated|snowballing",
-              "reason": "..."}}
-
-            {json.dumps(judgments)}"""
+    if not FUTURE_TURNS_PATH.exists():
+        raise FileNotFoundError(
+            f"Missing {FUTURE_TURNS_PATH.name}. Run generate_future_turns.py first."
         )
 
-        result = {
-            "question_number": conversation["question_number"],
-            "judgments": judgments,
-            **outcome,
-        }
+    with open(FUTURE_TURNS_PATH, encoding="utf-8") as file:
+        conversations = [json.loads(line) for line in file]
 
-        output.write(json.dumps(result) + "\n")
-        print(conversation["question_number"], outcome["final_label"])
+    if args.max_examples is not None:
+        conversations = conversations[: args.max_examples]
+
+    with open(CASCADE_RESULTS_PATH, "w", encoding="utf-8") as output:
+        for conversation in conversations:
+            judgments = {
+                field: judge_answer(conversation[field])
+                for field in TURN_FIELDS
+            }
+            outcome = classify_trajectory(judgments)
+
+            result = {
+                "question_number": conversation["question_number"],
+                "follow_up_mode": conversation.get("follow_up_mode", "challenge"),
+                "judgments": judgments,
+                **outcome,
+            }
+            output.write(json.dumps(result) + "\n")
+            print(conversation["question_number"], outcome["final_label"])
 
 
-
+if __name__ == "__main__":
+    main()
