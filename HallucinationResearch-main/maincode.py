@@ -1,3 +1,4 @@
+# Legacy script — use forecasting/generate_future_turns.py instead.
 import json
 import torch
 
@@ -5,8 +6,8 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 MODEL_NAME = "Qwen/Qwen3.5-2B"
 
-INPUT_PATH = "forecasting/batch_results.jsonl"
-OUTPUT_PATH = "forecasting/future_turns.jsonl"
+INPUT_PATH = "../forecasting/batch_results.jsonl"
+OUTPUT_PATH = "../forecasting/future_turns.jsonl"
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to("mps")
