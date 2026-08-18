@@ -1,0 +1,126 @@
+2026-08-12 23:46:02,117 - INFO - ======================================================================
+2026-08-12 23:46:02,117 - INFO - QUEUE-BASED EVALUATION PIPELINE: webscraper
+2026-08-12 23:46:02,117 - INFO - Task: research_questions
+2026-08-12 23:46:02,117 - INFO - ======================================================================
+2026-08-12 23:46:02,117 - INFO - Input: forecasting/debug_one.jsonl
+2026-08-12 23:46:02,117 - INFO - Models: Extractor=gpt-5-mini-minimal, Search=gpt-5-mini-minimal, Judge=gpt-5-mini-medium
+2026-08-12 23:46:02,117 - INFO - Workers: Extract=1, Search=1, Fetch=50, PDF=10, Filter=1, Judge=1
+2026-08-12 23:46:02,117 - INFO - Checkpointing: Every 100 judgments
+2026-08-12 23:46:02,117 - INFO - ======================================================================
+
+2026-08-12 23:46:02,117 - INFO - Loading conversations from: forecasting/debug_one.jsonl
+2026-08-12 23:46:02,117 - INFO - ✓ Loaded 1 conversations
+2026-08-12 23:46:02,117 - INFO - 
+2026-08-12 23:46:02,117 - INFO - No existing results found at: forecasting/debug_one_eval_webscraper.jsonl
+2026-08-12 23:46:02,117 - INFO - 
+2026-08-12 23:46:02,117 - INFO - No claims cache found at: forecasting/debug_one_extracted_claims_cache.jsonl
+2026-08-12 23:46:02,164 - INFO - Starting pipeline with 1 items...
+2026-08-12 23:46:02,164 - INFO - [Monitor] Started (interval: 3.0s)
+2026-08-12 23:46:02,168 - DEBUG - Serper httpx client started (limit=50, http1=True)
+2026-08-12 23:46:02,168 - INFO - [ContentAggregator] Started
+2026-08-12 23:46:02,168 - DEBUG - Processing conversation 0 with 2 turns
+2026-08-12 23:46:02,168 - DEBUG - Conv 0 turn 1: extracting claims from 896 chars
+2026-08-12 23:46:03,589 - DEBUG - Conv 0 turn 1: extracted 0 claims
+2026-08-12 23:46:03,589 - INFO - Conv 0: 1 assistant turns, 0 total claims extracted
+2026-08-12 23:46:03,589 - INFO - Saving 0 claims to cache: forecasting/debug_one_extracted_claims_cache.jsonl
+2026-08-12 23:46:03,589 - INFO - ✓ Saved claims cache
+2026-08-12 23:46:03,589 - INFO - 📁 Claims cache saved (0 total claims)
+2026-08-12 23:46:04,178 - DEBUG - Serper httpx client closed (id=5773475136)
+2026-08-12 23:46:07,170 - INFO - [ContentAggregator] Stopped (content=0, pdf=0, merged=0, timeout=0)
+2026-08-12 23:46:07,685 - INFO - [Monitor] Stopped
+2026-08-12 23:46:07,685 - INFO - 
+━━━ Pipeline Status (5.5s elapsed) ━━━
+Completed: 0 | Failed: 0
+
+Queues:
+  conversations        [░░░░░░░░░░░░░░░░░░░░]    0 items
+  claims               [░░░░░░░░░░░░░░░░░░░░]    0 items
+  search_tasks         [░░░░░░░░░░░░░░░░░░░░]    0 items
+  content              [░░░░░░░░░░░░░░░░░░░░]    0 items
+  pdf_tasks            [░░░░░░░░░░░░░░░░░░░░]    0 items
+  pdf_results          [░░░░░░░░░░░░░░░░░░░░]    0 items
+  aggregated           [░░░░░░░░░░░░░░░░░░░░]    0 items
+  filtered             [░░░░░░░░░░░░░░░░░░░░]    0 items
+  results              [░░░░░░░░░░░░░░░░░░░░]    0 items
+
+Workers:
+  ClaimExtractor         0/1   active |    1 done |  1421ms avg (conversations → claims)
+  WebSearcher            0/1   active |    0 done |     0ms avg (claims → search_tasks)
+  WebFetcher             0/50  active |    0 done |     0ms avg (search_tasks → content)
+  PDFConverter           0/10  active |    0 done |     0ms avg (pdf_tasks → pdf_results)
+  ContentAggregator      0/1   active |    0 done |     0ms avg (content → aggregated)
+  ContentFilter          0/1   active |    0 done |     0ms avg (aggregated → filtered)
+  Judge                  0/1   active |    0 done |     0ms avg (filtered → results)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-08-12 23:46:07,686 - INFO - 
+✓ Collected 0 judgment results
+2026-08-12 23:46:07,686 - INFO - Saving results to: forecasting/debug_one_eval_webscraper.jsonl
+2026-08-12 23:46:07,687 - INFO - ✓ Saved 1 evaluation results
+2026-08-12 23:46:07,687 - INFO - 
+======================================================================
+2026-08-12 23:46:07,687 - INFO - PIPELINE COMPLETE
+2026-08-12 23:46:07,687 - INFO - ======================================================================
+2026-08-12 23:46:07,687 - INFO - Conversations: 1
+2026-08-12 23:46:07,687 - INFO - Total claims: 0
+2026-08-12 23:46:07,687 - INFO - Hallucinations: 0
+2026-08-12 23:46:07,687 - INFO - Overall accuracy: 100.0%
+2026-08-12 23:46:07,687 - INFO - Results: forecasting/debug_one_eval_webscraper.jsonl
+2026-08-12 23:46:07,687 - INFO - ======================================================================
+[ClaimExtractor] Started 1 worker(s)
+[WebSearcher] Started 1 worker(s)
+[WebFetcher] Started 50 worker(s)
+[PDFConverter] Started 10 worker(s)
+[ContentFilter] Started 1 worker(s)
+[Judge] Started 1 worker(s)
+━━━ Pipeline Status (0.0s elapsed) ━━━
+Completed: 0 | Failed: 0
+
+Queues:
+  conversations        [████████████████████]    1 items
+  claims               [░░░░░░░░░░░░░░░░░░░░]    0 items
+  search_tasks         [░░░░░░░░░░░░░░░░░░░░]    0 items
+  content              [░░░░░░░░░░░░░░░░░░░░]    0 items
+  pdf_tasks            [░░░░░░░░░░░░░░░░░░░░]    0 items
+  pdf_results          [░░░░░░░░░░░░░░░░░░░░]    0 items
+  aggregated           [░░░░░░░░░░░░░░░░░░░░]    0 items
+  filtered             [░░░░░░░░░░░░░░░░░░░░]    0 items
+  results              [░░░░░░░░░░░░░░░░░░░░]    0 items
+
+Workers:
+  ClaimExtractor         0/1   active |    0 done |     0ms avg (conversations → claims)
+  WebSearcher            0/1   active |    0 done |     0ms avg (claims → search_tasks)
+  WebFetcher             0/50  active |    0 done |     0ms avg (search_tasks → content)
+  PDFConverter           0/10  active |    0 done |     0ms avg (pdf_tasks → pdf_results)
+  ContentAggregator      0/1   active |    0 done |     0ms avg (content → aggregated)
+  ContentFilter          0/1   active |    0 done |     0ms avg (aggregated → filtered)
+  Judge                  0/1   active |    0 done |     0ms avg (filtered → results)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ClaimExtractor] Stopped (processed: 1, failed: 0)
+[WebSearcher] Stopped (processed: 0, failed: 0)
+[WebFetcher] Stopped (processed: 0, failed: 0)
+━━━ Pipeline Status (3.0s elapsed) ━━━
+Completed: 0 | Failed: 0
+
+Queues:
+  conversations        [░░░░░░░░░░░░░░░░░░░░]    0 items
+  claims               [░░░░░░░░░░░░░░░░░░░░]    0 items
+  search_tasks         [░░░░░░░░░░░░░░░░░░░░]    0 items
+  content              [░░░░░░░░░░░░░░░░░░░░]    0 items
+  pdf_tasks            [░░░░░░░░░░░░░░░░░░░░]    0 items
+  pdf_results          [░░░░░░░░░░░░░░░░░░░░]    0 items
+  aggregated           [░░░░░░░░░░░░░░░░░░░░]    0 items
+  filtered             [░░░░░░░░░░░░░░░░░░░░]    0 items
+  results              [░░░░░░░░░░░░░░░░░░░░]    0 items
+
+Workers:
+  ClaimExtractor         0/1   active |    1 done |  1421ms avg (conversations → claims)
+  WebSearcher            0/1   active |    0 done |     0ms avg (claims → search_tasks)
+  WebFetcher             0/50  active |    0 done |     0ms avg (search_tasks → content)
+  PDFConverter           0/10  active |    0 done |     0ms avg (pdf_tasks → pdf_results)
+  ContentAggregator      0/1   active |    0 done |     0ms avg (content → aggregated)
+  ContentFilter          0/1   active |    0 done |     0ms avg (aggregated → filtered)
+  Judge                  0/1   active |    0 done |     0ms avg (filtered → results)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[PDFConverter] Stopped (processed: 0, failed: 0)
+[ContentFilter] Stopped (processed: 0, failed: 0)
+[Judge] Stopped (processed: 0, failed: 0)

@@ -1712,13 +1712,13 @@ class CodingDirectPipeline:
             
             # Convert turn_evaluations to claim_evaluations format for report compatibility
             claim_evaluations = []
-            for turn_result in conv_results:
-                turn_dict = turn_result.to_dict()
-                turn_number = turn_dict.get("turn_number", 0)
+            for turn_result in conv_results: #Loops through every judged turn/res
+                turn_dict = turn_result.to_dict() #Converts into Python Dictionary
+                turn_number = turn_dict.get("turn_number", 0) #tries to read turn number
 
                 # Unjudged turn (sampler error / unparseable response): mark it so
                 # a second pass can target it; do NOT emit a "verified" entry.
-                if turn_result.error:
+                if turn_result.error: #if judge failed
                     claim_evaluations.append({
                         "claim_id": f"turn-{conv_id}-{turn_number}-unjudged",
                         "conversation_id": conv_id,

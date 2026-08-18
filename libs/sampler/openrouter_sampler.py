@@ -208,6 +208,7 @@ class OpenRouterSampler(SamplerBase):
                     "model": self.model,
                     "messages": msgs,
                     "temperature": self.temperature,
+                    "max_tokens": 4096,
                 }
 
                 extra_body: dict[str, Any] = {}

@@ -1,0 +1,11 @@
+How do simultaneous measurements of a neutron star’s mass and radius constrain the equation of state of dense nuclear matter?
+
+Simultaneous measurements of a neutron star’s mass and radius provide a powerful constraint on the equation of state (EoS) of dense nuclear matter because they allow for the determination of the star's internal structure and the resulting gravitational field, which in turn reveals the properties of the matter at extreme densities.
+
+The mass of a neutron star is determined by the total gravitational mass, which is the sum of the rest masses of the neutrons and protons, plus the binding energy. The radius is determined by the balance between the outward pressure of the degenerate neutrons and the inward pull of gravity. The EoS describes how the pressure of the neutrons and protons changes with density.
+
+When the mass and radius are measured simultaneously, the gravitational field of the star is determined. This gravitational field is related to the mass and radius through the Schwarzschild metric, which describes the spacetime around a non-rotating, spherically symmetric mass. The gravitational field is determined by the mass and radius through the Schwarzschild metric, which describes the spacetime around a non-rotating, spherically symmetric mass.
+
+The gravitational field is determined by the mass and radius through the Schwarzschild metric, which describes the spacetime around a non-rotating, spherically symmetric mass. The gravitational field is determined by the mass and radius through the Schwarzschild metric, which describes the spacetime around a non-rotating, spherically symmetric mass.
+
+The gravitational field is determined by the mass and radius through the Schwarzschild metric, which describes the spacetime around a non-rotating, spherically symmetric mass. The gravitational field is determined by the mass and radius through the Schwarzschild metric,

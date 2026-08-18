@@ -86,7 +86,9 @@ class JudgeWorker(Worker[FilteredContent, JudgmentResult]):
             return prompt_path.read_text(encoding="utf-8").strip()
         
         raise FileNotFoundError(f"System prompt file not found: {prompt_path}")
-    
+
+
+    # Decides whether a claim is a hallucination.
     async def process(
         self,
         item: FilteredContent,

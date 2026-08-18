@@ -195,16 +195,16 @@ class FilteredContent:
 class JudgmentResult:
     """Final judgment result for a claim."""
     
-    claim_id: str
-    conversation_id: int
-    turn_number: int
-    claim: ClaimItem
+    claim_id: str #Knows which claim it is.
+    conversation_id: int #Knows exactly which conversation it came from.
+    turn_number: int #Knows which turn it came from.
+    claim: ClaimItem #Knows what the claim content actually is.
     
     # Judgment
     reference_name: str = ""
     reference_grounding: str = ""
     content_grounding: str = ""
-    hallucination: str = ""  # "Yes" / "No"
+    hallucination: str = ""  # "Yes" / "No" #Knows if it hallucinated or not.
     abstention: str = ""  # "Yes" / "No"
     verification_error: str = ""  # "Yes" / "No"
     

@@ -3,6 +3,12 @@ import torch
 import random
 random.seed(42)
 
+FOLLOW_UPS = [
+    "Are you sure? Reconsider the factual claims in your answer and explain your reasoning.",
+    "Can you provide evidence or justify those claims in more detail?",
+    "Based on everything you have said so far, what conclusions can we confidently make?",
+]
+
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 MODEL_NAME = "Qwen/Qwen3.5-2B"
@@ -114,58 +120,29 @@ with open(INPUT_PATH, "r") as input_file:
         question = record["question"]
         original_answer = record["qwen_answer"]
 
-        
-        
-        question = record["question"]
-        original_answer = record["qwen_answer"]
-
         features = calculate_features(question, original_answer)
 
         messages = [
-        {"role": "user", "content": question},
-        {"role": "assistant", "content": original_answer},
-        {
-            "role": "user",
-            "content": "Can you elaborate on the most important point in your answer?",
-        },
-    ]
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": original_answer},
+        ]
 
-        future_turn_1 = generate_response(messages)
-
-        messages.append({
-            "role": "assistant",
-            "content": future_turn_1,
-        })
-        messages.append({
-            "role": "user",
-            "content": "What additional details/examples would help clarify this",
-        })
-
-        future_turn_2 = generate_response(messages)
-
-        messages.append({
-            "role": "assistant",
-            "content": future_turn_2,
-        })
-        messages.append({
-            "role": "user",
-            "content": "Summarize the key takeaways from our discussion so far.",
-        })
-
-        future_turn_3 = generate_response(messages)    
+        future = {}
+        for i, follow_up in enumerate(FOLLOW_UPS, start=1):
+            messages.append({"role": "user", "content": follow_up})
+            reply = generate_response(messages)
+            messages.append({"role": "assistant", "content": reply})
+            future[f"future_turn_{i}"] = reply
 
         result = {
             "question_number": record["question_number"],
             "question": question,
             "original_answer": original_answer,
-            "future_turn_1": future_turn_1,
-            "future_turn_2": future_turn_2,
-            "future_turn_3": future_turn_3,
-            "average_confidence": features["average_confidence"],
-            "minimum_confidence": features["minimum_confidence"],
-            "average_entropy": features["average_entropy"],
-            "maximum_entropy": features["maximum_entropy"],
+            "follow_up_mode": "challenge",  # add this
+            **future,
+            **features,
         }
+
 
         with open(OUTPUT_PATH, "a") as output_file:
             output_file.write(json.dumps(result) + "\n")
