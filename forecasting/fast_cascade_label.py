@@ -1,7 +1,7 @@
 """Fast cascade labeling via OpenAI (no Serper). Use after generate_future_turns.py.
 
 Same labels as factscore_serper_cascades.py but ~10x faster for quick iteration.
-Document in paper as GPT-4o-mini trajectory judge.
+Document in paper as GPT-4o-mini trajectory judge (challenge-condition runs).
 
 Example:
   python forecasting/fast_cascade_label.py
@@ -20,8 +20,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from config import CASCADE_RESULTS_PATH, FUTURE_TURNS_PATH
-from follow_up_prompts import follow_up_fields, future_turn_fields, trajectory_key
+FUTURE_TURNS_PATH = SCRIPT_DIR / "future_turns.jsonl"
+CASCADE_RESULTS_PATH = SCRIPT_DIR / "factscore_cascade_results.jsonl"
 
 LABEL_PROMPT = """You are labeling how a hallucinating LLM conversation evolves over follow-up turns.
 
@@ -47,22 +47,21 @@ Return JSON only:
 {{"final_label": "corrected|snowballing|isolated", "reason": "one sentence"}}"""
 
 
+def row_key(row: dict) -> str:
+    return f"{row['question_number']}:{row.get('follow_up_mode', '')}"
+
+
 def format_turns(row: dict) -> str:
-    fields = future_turn_fields(row)
-    prompts = follow_up_fields(row)
-    chunks: list[str] = []
-    turn_index = 0
-    for field in fields:
-        if field == "original_answer":
-            continue
-        turn_index += 1
-        user_q = prompts[turn_index - 1] if turn_index - 1 < len(prompts) else ""
-        assistant = row.get(field, "")
+    chunks = []
+    index = 1
+    while f"future_turn_{index}" in row:
+        fu = row.get(f"follow_up_{index}", "")
         chunks.append(
-            f"FOLLOW-UP {turn_index} / RESPONSE {turn_index}:\n"
-            f"User: {user_q}\n"
-            f"Assistant: {assistant[:2000]}"
+            f"FOLLOW-UP {index} / RESPONSE {index}:\n"
+            f"User: {fu}\n"
+            f"Assistant: {row.get(f'future_turn_{index}', '')[:2000]}"
         )
+        index += 1
     return "\n\n".join(chunks)
 
 
@@ -86,17 +85,6 @@ def label_trajectory(client, row: dict, model: str) -> dict:
     return {"final_label": label, "reason": out.get("reason", "")}
 
 
-def load_done_keys() -> set[str]:
-    if not CASCADE_RESULTS_PATH.exists():
-        return set()
-    done: set[str] = set()
-    with open(CASCADE_RESULTS_PATH, encoding="utf-8") as file:
-        for line in file:
-            if line.strip():
-                done.add(trajectory_key(json.loads(line)))
-    return done
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--resume", action="store_true")
@@ -115,38 +103,45 @@ def main() -> None:
     client = OpenAI(api_key=api_key)
 
     rows = [json.loads(line) for line in open(FUTURE_TURNS_PATH) if line.strip()]
-    done = load_done_keys() if args.resume else set()
-    pending = [r for r in rows if trajectory_key(r) not in done]
+    done: set[str] = set()
+    if args.resume and CASCADE_RESULTS_PATH.exists():
+        for line in open(CASCADE_RESULTS_PATH):
+            if line.strip():
+                done.add(row_key(json.loads(line)))
+
+    pending = [r for r in rows if row_key(r) not in done]
     print(f"Labeling {len(pending)}/{len(rows)} conversations (model={args.model})")
 
     mode = "a" if args.resume and done else "w"
     with open(CASCADE_RESULTS_PATH, mode, encoding="utf-8") as out:
         for i, row in enumerate(pending, 1):
             result = label_trajectory(client, row, args.model)
-            key = trajectory_key(row)
             record = {
                 "question_number": row["question_number"],
-                "branch_id": row.get("branch_id", key),
                 "domain": row.get("domain"),
                 "follow_up_mode": row.get("follow_up_mode", "challenge"),
-                "strategy": row.get("strategy") or row.get("follow_up_mode"),
-                "n_turns": row.get("n_turns"),
                 "labeler": "fast_gpt",
                 **result,
             }
             out.write(json.dumps(record) + "\n")
             out.flush()
-            print(f"[{i}/{len(pending)}] {key} -> {result['final_label']}")
+            print(f"[{i}/{len(pending)}] {row_key(row)} -> {result['final_label']}")
 
-    from collections import Counter
+    from collections import Counter, defaultdict
 
     counts = Counter()
+    by_mode: dict[str, Counter] = defaultdict(Counter)
     for line in open(CASCADE_RESULTS_PATH):
-        if line.strip():
-            counts[json.loads(line)["final_label"]] += 1
+        if not line.strip():
+            continue
+        labeled = json.loads(line)
+        counts[labeled["final_label"]] += 1
+        by_mode[labeled.get("follow_up_mode", "")][labeled["final_label"]] += 1
     print("Label counts:", dict(counts))
-    print("Next: python forecasting/summarize_strategy_outcomes.py")
-    print("Optional: python forecasting/predict_cascades.py")
+    print("By strategy:")
+    for mode, c in sorted(by_mode.items()):
+        print(f"  {mode}: {dict(c)}")
+    print("Next: python forecasting/predict_cascades.py")
 
 
 if __name__ == "__main__":

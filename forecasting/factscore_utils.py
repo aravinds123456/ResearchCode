@@ -114,5 +114,5 @@ Return JSON only:
 {{"final_label": "corrected|isolated|snowballing", "reason": "..."}}
 
 TRAJECTORY:
-{json.dumps(judgments)[:12000]}"""
+{json.dumps(judgments)[:8000]}"""
     )

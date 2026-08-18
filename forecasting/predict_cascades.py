@@ -11,7 +11,6 @@ Compares:
 from __future__ import annotations
 
 import json
-import sys
 from collections import Counter
 from pathlib import Path
 
@@ -26,11 +25,8 @@ from sklearn.metrics import (
 from sklearn.model_selection import LeaveOneOut, StratifiedKFold, cross_val_predict
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
-
-from config import CASCADE_RESULTS_PATH, FUTURE_TURNS_PATH
-from follow_up_prompts import trajectory_key
+FUTURE_TURNS_PATH = SCRIPT_DIR / "future_turns.jsonl"
+CASCADE_RESULTS_PATH = SCRIPT_DIR / "factscore_cascade_results.jsonl"
 
 SIGNAL_FEATURES = [
     "average_confidence",
@@ -40,30 +36,34 @@ SIGNAL_FEATURES = [
 ]
 
 
-def load_data() -> tuple[list[list[float]], list[str], list[str]]:
-    features_by_key: dict[str, list[float]] = {}
+def row_key(row: dict) -> str:
+    return f"{row['question_number']}:{row.get('follow_up_mode', '')}"
+
+
+def load_data() -> tuple[list[list[float]], list[str], list[int]]:
+    features_by_q: dict[str, list[float]] = {}
     with open(FUTURE_TURNS_PATH, encoding="utf-8") as file:
         for line in file:
             row = json.loads(line)
-            features_by_key[trajectory_key(row)] = [
+            features_by_q[row_key(row)] = [
                 row[name] for name in SIGNAL_FEATURES
             ]
 
     x_rows: list[list[float]] = []
     labels: list[str] = []
-    keys: list[str] = []
+    question_numbers: list[int] = []
 
     with open(CASCADE_RESULTS_PATH, encoding="utf-8") as file:
         for line in file:
             row = json.loads(line)
-            key = trajectory_key(row)
-            if key not in features_by_key:
+            key = row_key(row)
+            if key not in features_by_q:
                 continue
-            x_rows.append(features_by_key[key])
+            x_rows.append(features_by_q[key])
             labels.append(row["final_label"].lower().strip())
-            keys.append(key)
+            question_numbers.append(row["question_number"])
 
-    return x_rows, labels, keys
+    return x_rows, labels, question_numbers
 
 
 def pick_cv(labels: list[str]):
@@ -108,19 +108,12 @@ def main() -> None:
     if not CASCADE_RESULTS_PATH.exists():
         raise FileNotFoundError(f"Missing {CASCADE_RESULTS_PATH}")
 
-    x_rows, labels, keys = load_data()
+    x_rows, labels, question_numbers = load_data()
     label_counts = Counter(labels)
 
     print_section("DATA")
     print(f"Examples: {len(labels)}")
     print("Label counts:", dict(label_counts))
-    n_questions = len({key.split(":", 1)[0] for key in keys})
-    if n_questions and n_questions < len(keys):
-        print(
-            f"Note: {len(keys)} branches from {n_questions} questions. "
-            "Same turn-1 signals can map to different strategy outcomes. "
-            "Primary result: python forecasting/summarize_strategy_outcomes.py"
-        )
     print("Features used:", SIGNAL_FEATURES)
     print(
         "Important: labels come from FUTURE turns; signals come from turn 1 ONLY. "
