@@ -48,6 +48,8 @@ Return JSON only:
 
 
 def row_key(row: dict) -> str:
+    if row.get("branch_id"):
+        return str(row["branch_id"])
     return f"{row['question_number']}:{row.get('follow_up_mode', '')}"
 
 
@@ -89,7 +91,20 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--model", default=os.environ.get("OPENAI_LABEL_MODEL", "gpt-4o-mini"))
+    parser.add_argument(
+        "--future",
+        default=None,
+        help="Conversations to label (default: future_turns.jsonl; use cascade_tree.jsonl for the tree).",
+    )
+    parser.add_argument("--out", default=None, help="Where to write labels.")
     args = parser.parse_args()
+
+    future_path = Path(args.future) if args.future else FUTURE_TURNS_PATH
+    if not future_path.is_absolute():
+        future_path = SCRIPT_DIR / future_path
+    results_path = Path(args.out) if args.out else CASCADE_RESULTS_PATH
+    if not results_path.is_absolute():
+        results_path = SCRIPT_DIR / results_path
 
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not api_key:
@@ -102,10 +117,10 @@ def main() -> None:
 
     client = OpenAI(api_key=api_key)
 
-    rows = [json.loads(line) for line in open(FUTURE_TURNS_PATH) if line.strip()]
+    rows = [json.loads(line) for line in open(future_path) if line.strip()]
     done: set[str] = set()
-    if args.resume and CASCADE_RESULTS_PATH.exists():
-        for line in open(CASCADE_RESULTS_PATH):
+    if args.resume and results_path.exists():
+        for line in open(results_path):
             if line.strip():
                 done.add(row_key(json.loads(line)))
 
@@ -113,12 +128,15 @@ def main() -> None:
     print(f"Labeling {len(pending)}/{len(rows)} conversations (model={args.model})")
 
     mode = "a" if args.resume and done else "w"
-    with open(CASCADE_RESULTS_PATH, mode, encoding="utf-8") as out:
+    with open(results_path, mode, encoding="utf-8") as out:
         for i, row in enumerate(pending, 1):
             result = label_trajectory(client, row, args.model)
             record = {
                 "question_number": row["question_number"],
+                "branch_id": row.get("branch_id"),
+                "dataset": row.get("dataset"),
                 "domain": row.get("domain"),
+                "answer_model": row.get("answer_model"),
                 "follow_up_mode": row.get("follow_up_mode", "challenge"),
                 "labeler": "fast_gpt",
                 **result,
@@ -131,17 +149,19 @@ def main() -> None:
 
     counts = Counter()
     by_mode: dict[str, Counter] = defaultdict(Counter)
-    for line in open(CASCADE_RESULTS_PATH):
+    for line in open(results_path):
         if not line.strip():
             continue
         labeled = json.loads(line)
         counts[labeled["final_label"]] += 1
         by_mode[labeled.get("follow_up_mode", "")][labeled["final_label"]] += 1
     print("Label counts:", dict(counts))
-    print("By strategy:")
+    print("By follow-up category:")
     for mode, c in sorted(by_mode.items()):
-        print(f"  {mode}: {dict(c)}")
-    print("Next: python forecasting/predict_cascades.py")
+        total = sum(c.values())
+        snowball = c.get("snowballing", 0)
+        share = f"{100.0 * snowball / total:.0f}%" if total else "—"
+        print(f"  {mode:<20} n={total:<4} snowballing={snowball} ({share})  {dict(c)}")
 
 
 if __name__ == "__main__":

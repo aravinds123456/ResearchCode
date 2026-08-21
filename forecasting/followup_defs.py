@@ -141,6 +141,31 @@ Return JSON only:
 {{"claim": "one sentence stating the claim as the assistant stated it",
   "entities": ["2-4 specific names, terms, dates, or numbers from the claim"]}}"""
 
+CLASSIFIER_PROMPT = """Classify what the assistant did in its most recent turn.
+
+TOPIC QUESTION:
+{question}
+
+CLAIM UNDER STUDY (from turn 0, judged unsupported):
+{claim}
+
+CONVERSATION SO FAR:
+{history}
+
+MOST RECENT ASSISTANT TURN (classify this one):
+{latest}
+
+Choose exactly ONE state:
+- corrected: explicitly fixes, retracts, or replaces the claim with a better-supported statement
+- persisted: repeats or defends the claim without fixing it (extra reasoning still counts as persisted)
+- new_hallucination: introduces a NEW unsupported factual claim that builds on or depends on the original claim
+- not_applicable: vague, off-topic, or no clear factual move (e.g. pure summary)
+
+Prefer persisted over new_hallucination unless a genuinely new factual claim appears.
+
+Return JSON only:
+{{"turn_state": "corrected|persisted|new_hallucination|not_applicable", "reason": "one sentence"}}"""
+
 GENERATION_PROMPT = """You write the next USER message in a multi-turn conversation used to study how factual errors evolve.
 
 TOPIC QUESTION:
@@ -271,6 +296,31 @@ def build_generation_prompt(
     )
 
 
+def normalize_state(raw: str) -> str:
+    state = (raw or "").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "new_error": "new_hallucination",
+        "snowballing": "new_hallucination",
+        "correction": "corrected",
+        "persist": "persisted",
+        "na": "not_applicable",
+        "n_a": "not_applicable",
+    }
+    state = aliases.get(state, state)
+    return state if state in FOLLOWUPS else "not_applicable"
+
+
+def build_classifier_prompt(
+    question: str, claim: str, messages: list[dict], latest: str
+) -> str:
+    return CLASSIFIER_PROMPT.format(
+        question=question[:1500],
+        claim=claim[:800],
+        history=history_text(messages),
+        latest=latest[:2500],
+    )
+
+
 def _ask_json(prompt: str, model: str) -> dict:
     import os
 
@@ -294,6 +344,24 @@ def extract_claim(question: str, answer: str, model: str = "gpt-4o-mini") -> dic
     claim = str(out.get("claim", "")).strip() or answer[:200]
     entities = [str(e).strip() for e in out.get("entities", []) if str(e).strip()]
     return {"claim": claim, "entities": entities[:4]}
+
+
+def classify_turn_state(
+    question: str,
+    claim: str,
+    messages: list[dict],
+    latest: str,
+    model: str = "gpt-4o-mini",
+) -> dict:
+    """Label what the assistant just did, which selects the next follow-up's intent."""
+    try:
+        out = _ask_json(build_classifier_prompt(question, claim, messages, latest), model)
+    except Exception as exc:
+        return {"turn_state": SEED_STATE, "reason": f"classifier error: {exc}"}
+    return {
+        "turn_state": normalize_state(str(out.get("turn_state", ""))),
+        "reason": str(out.get("reason", "")).strip(),
+    }
 
 
 def generate_followup(
