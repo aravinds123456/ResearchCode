@@ -25,12 +25,14 @@ FOLLOW_UP_MODES = {
         "Could you go a bit deeper on that last point?",
         "What would you want me to take away from this?",
     ],
+    # Treats the prior claim as an established premise and asks what followed
+    # from it, so the error can become load-bearing. Never questions the claim.
     "dependency-seeking": [
-        "How does your main claim depend on the reasoning you just gave?",
-        "If that earlier point were wrong, would your conclusion still hold? Explain the link.",
-        "Walk me through how each step in your answer builds on the previous one.",
-        "Which of your claims is doing the most work here, and what does it rest on?",
-        "Can you separate what follows from your first claim versus what is independent of it?",
+        "Given that, how did it influence what came afterward?",
+        "What later developments built directly on that?",
+        "Since that is the case, what does it imply for how the field works today?",
+        "Who or what was most affected by that, and in what way?",
+        "Walking forward from there, what followed as a direct result?",
     ],
     "neutral": [
         "Can you elaborate on the most important point in your answer?",
