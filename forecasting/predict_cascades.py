@@ -36,12 +36,16 @@ SIGNAL_FEATURES = [
 ]
 
 
+def row_key(row: dict) -> str:
+    return f"{row['question_number']}:{row.get('follow_up_mode', '')}"
+
+
 def load_data() -> tuple[list[list[float]], list[str], list[int]]:
-    features_by_q: dict[int, list[float]] = {}
+    features_by_q: dict[str, list[float]] = {}
     with open(FUTURE_TURNS_PATH, encoding="utf-8") as file:
         for line in file:
             row = json.loads(line)
-            features_by_q[row["question_number"]] = [
+            features_by_q[row_key(row)] = [
                 row[name] for name in SIGNAL_FEATURES
             ]
 
@@ -52,12 +56,12 @@ def load_data() -> tuple[list[list[float]], list[str], list[int]]:
     with open(CASCADE_RESULTS_PATH, encoding="utf-8") as file:
         for line in file:
             row = json.loads(line)
-            q = row["question_number"]
-            if q not in features_by_q:
+            key = row_key(row)
+            if key not in features_by_q:
                 continue
-            x_rows.append(features_by_q[q])
+            x_rows.append(features_by_q[key])
             labels.append(row["final_label"].lower().strip())
-            question_numbers.append(q)
+            question_numbers.append(row["question_number"])
 
     return x_rows, labels, question_numbers
 
