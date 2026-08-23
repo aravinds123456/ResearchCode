@@ -41,11 +41,15 @@ selenium = ">=4.36.0, <5"
 trafilatura = ">=2.0.0, <3"
 pymupdf4llm = ">=0.2.2, <0.3"
 google-genai = "*"
+fpdf2 = "*"
 
 [tasks]
 
 # Root-level wrappers (use --task to specify which task)
 report = "python report.py"
+forecast-report = "python forecasting/pipeline.py report --from-partial"
+forecast-test = "python -m unittest forecasting.test_pipeline forecasting.test_cascade"
+forecast-tree = "python forecasting/pipeline.py tree --max-seeds 100 --levels 5 --resume"
 
 # Paper authors task
 paper-authors-data = "python -m paper_authors.data_fetcher"

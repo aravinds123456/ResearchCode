@@ -106,6 +106,32 @@ pixi run report \
   --input "research_questions/results/conversations_gpt-5_250convs_eval_webscraper.jsonl"
 ```
 
+## Cascade forecasting
+
+HalluHard's 5-strategy cascade tree is merged with [HallucinationResearchTest](https://github.com/mbhat012/HallucinationResearchTest.git): per-turn DROP/CORRECT/REPEAT/DEPEND labels, teacher-forced confidence, per-model seed generation, and resume-safe writes.
+
+```bash
+# Reproduce the cleaned partial-run report (no GPU)
+python forecasting/pipeline.py report --from-partial
+
+# Full experiment (100 seeds x 5 strategies x 5 turns)
+python forecasting/pipeline.py answer --domain all --resume
+python forecasting/pipeline.py judge  --domain all --resume
+python forecasting/pipeline.py tree   --max-seeds 100 --levels 5 --resume
+python forecasting/pipeline.py label  --resume
+python forecasting/pipeline.py report
+
+# New model under test: generate that model's own seeds first
+TEST_MODEL="meta-llama/Llama-3.1-8B-Instruct" python forecasting/generate_seeds.py
+python forecasting/pipeline.py tree --seeds forecasting/seeds_meta-llama-llama-3.1-8b-instruct.jsonl --resume
+```
+
+`python maincode.py` still works and maps HallucinationResearchTest env vars (`TEST_MODEL`, `MAX_EXAMPLES`, `INPUT_PATH`, `OUTPUT_PATH`, `NUM_TURNS`) onto `pipeline.py tree`.
+
+Default design: 100 domain-balanced hallucinating seeds, five pure strategies (dependency-seeking, neutral, skeptical, accepting, topic-shift), five turns, greedy decoding with thinking disabled. Do not mix follow-up styles inside a branch if you want to report a per-strategy table.
+
+See `python forecasting/pipeline.py report --from-partial` for Wilson CIs, the domain split, and the re-run checklist against the captured 61-seed PDF.
+
 ## Available Tasks
 
 - `research_questions` - Academic research question claims

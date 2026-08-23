@@ -16,3 +16,7 @@ __pycache__/
 !**/data/.gitkeep
 *.html
 .DS_Store
+
+!forecasting/results/cascade_partial_run.json
+!forecasting/results/cascade_report.html
+!forecasting/results/cascade_report.pdf
