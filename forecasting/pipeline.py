@@ -27,6 +27,7 @@ from cascade import (
     DEFAULT_MAX_SEEDS,
     DEFAULT_TEST_MODEL,
     DEFAULT_TURNS,
+    ENABLE_THINKING,
     DOMAINS,
     HALL,
     LABELS,
@@ -199,7 +200,7 @@ def cmd_tree(args) -> None:
         f"{len(seeds)} seeds x {len(cats)} categories x {args.levels} levels = "
         f"{len(seeds) * len(cats)} branches, {len(seeds) * len(cats) * args.levels} answers"
     )
-    print(f"Answer model: {args.model}")
+    print(f"Answer model: {args.model} (thinking {'on' if ENABLE_THINKING else 'off'})")
     print(f"Judge model: {judge_name if not args.dry_run else 'dry-run'}")
     print(
         "Sampling: "
@@ -268,6 +269,7 @@ def cmd_tree(args) -> None:
                 "domain": domain_of(seed),
                 "answer_model": args.model,
                 "judge_model_name": judge_name,
+                "enable_thinking": ENABLE_THINKING,
                 "follow_up_mode": cat,
                 "question": question,
                 "original_answer": first,

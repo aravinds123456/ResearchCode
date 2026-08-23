@@ -16,6 +16,7 @@ from cascade import (
     DEFAULT_OPENAI_JUDGE,
     DEFAULT_TEST_MODEL,
     DEFAULT_TURNS,
+    ENABLE_THINKING,
     OUTCOMES,
     PARTIAL_RUN,
     backup,
@@ -83,6 +84,7 @@ class DesignDefaultTests(unittest.TestCase):
     def test_default_models_are_qwen35_4b_and_gpt5_mini(self):
         self.assertEqual(DEFAULT_TEST_MODEL, "Qwen/Qwen3.5-4B")
         self.assertEqual(DEFAULT_OPENAI_JUDGE, "gpt-5-mini")
+        self.assertFalse(ENABLE_THINKING)
         from runtime import _uses_responses_api
         self.assertTrue(_uses_responses_api("gpt-5-mini"))
         self.assertFalse(_uses_responses_api("gpt-4o-mini"))
@@ -217,6 +219,7 @@ class PartialRunTests(unittest.TestCase):
             self.assertTrue(all(row["branch_outcome"] == "DROP" for row in lines))
             self.assertTrue(all(row.get("domain") in {"research", "legal", "medical"} for row in lines))
             self.assertTrue(all("turn_label_1" in row for row in lines))
+            self.assertTrue(all(row.get("enable_thinking") is False for row in lines))
 
 
 class TopicShiftTests(unittest.TestCase):
@@ -237,6 +240,57 @@ class NameTests(unittest.TestCase):
     def test_entity_match(self):
         self.assertTrue(names("What did Scientist B do next?", ENTITIES))
         self.assertFalse(names("What about the wider field?", ENTITIES))
+
+
+class ThinkingOffTests(unittest.TestCase):
+    def test_chat_template_gets_enable_thinking_false(self):
+        import runtime
+
+        previous = runtime.tokenizer
+        previous_logged = runtime._THINKING_MODE_LOGGED
+
+        class Tokenizer:
+            chat_template = "dummy"
+
+            def apply_chat_template(self, messages, **kwargs):
+                self.kwargs = kwargs
+                self.messages = messages
+                return {"input_ids": [[1]]}
+
+        tokenizer = Tokenizer()
+        runtime.tokenizer = tokenizer
+        runtime._THINKING_MODE_LOGGED = False
+        self.addCleanup(lambda: setattr(runtime, "tokenizer", previous))
+        self.addCleanup(lambda: setattr(runtime, "_THINKING_MODE_LOGGED", previous_logged))
+
+        original = [{"role": "user", "content": "What is compound X47?"}]
+        encoded = runtime.build_model_inputs(original)
+        self.assertEqual(encoded, {"input_ids": [[1]]})
+        self.assertIs(tokenizer.kwargs.get("enable_thinking"), False)
+        self.assertEqual(original[0]["content"], "What is compound X47?")
+
+    def test_no_think_fallback_does_not_mutate_history(self):
+        import runtime
+
+        previous = runtime.tokenizer
+        previous_logged = runtime._THINKING_MODE_LOGGED
+
+        class Tokenizer:
+            def apply_chat_template(self, messages, **kwargs):
+                if "enable_thinking" in kwargs or "chat_template_kwargs" in kwargs:
+                    raise TypeError("unexpected kwarg")
+                self.messages = messages
+                return {"input_ids": [[1]]}
+
+        runtime.tokenizer = Tokenizer()
+        runtime._THINKING_MODE_LOGGED = False
+        self.addCleanup(lambda: setattr(runtime, "tokenizer", previous))
+        self.addCleanup(lambda: setattr(runtime, "_THINKING_MODE_LOGGED", previous_logged))
+
+        original = [{"role": "user", "content": "What is compound X47?"}]
+        runtime.build_model_inputs(original)
+        self.assertEqual(original[0]["content"], "What is compound X47?")
+        self.assertIn("/no_think", runtime.tokenizer.messages[0]["content"])
 
 
 if __name__ == "__main__":

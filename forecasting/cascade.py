@@ -235,6 +235,8 @@ DEFAULT_TURNS = env_int("NUM_TURNS", 3)
 # Qwen/Qwen3.5-4B is the 3.5-family model under test (replacing Qwen3.5-2B).
 DEFAULT_TEST_MODEL = "Qwen/Qwen3.5-4B"
 DEFAULT_OPENAI_JUDGE = "gpt-5-mini"
+# Qwen3.5-4B thinks by default. Keep reasoning off unless ENABLE_THINKING=1.
+ENABLE_THINKING = env_str("ENABLE_THINKING", "0").lower() in {"1", "true", "yes", "on"}
 
 
 def model_slug(name: str) -> str:

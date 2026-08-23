@@ -62,9 +62,10 @@ What to update before the next full run
    states (e.g. seed 1 accepting is five "persisted" turns labeled CORRECT).
    Derived outcomes remove that inconsistency.
 
-4. Turn thinking off and strip <think> blocks. Qwen3.5 otherwise spends the
-   token budget on chain-of-thought and echoes the question. The merged
-   runner passes enable_thinking=False and strips both.
+4. Turn thinking off and strip <think> blocks. Qwen3.5-4B thinks by default;
+   the runner hard-disables it with enable_thinking=False (override with
+   ENABLE_THINKING=1) and still strips leftover think tags. Otherwise the
+   token budget is spent on hidden chain-of-thought and the question is echoed.
 
 5. Score teacher-forced token probability of the emitted answer, not
    max-softmax. Max-softmax is peakedness and tracks entropy; forecasting

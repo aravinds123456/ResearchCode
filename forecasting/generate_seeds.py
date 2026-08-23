@@ -26,12 +26,14 @@ from cascade import (
     DEFAULT_TEST_MODEL,
     DIR,
     DOMAINS,
+    ENABLE_THINKING,
     env_float,
     env_int,
     env_str,
     model_slug,
     seed_identifier,
     strip_question_prefix,
+    strip_thinking,
     write,
 )
 
@@ -166,7 +168,7 @@ def generate_seed_answer(question: str, question_number: int, sample_index: int)
             **sampling_kwargs,
         )
     generated_token_ids = outputs.sequences[0, input_length:]
-    answer = tokenizer.decode(generated_token_ids, skip_special_tokens=True).strip()
+    answer = strip_thinking(tokenizer.decode(generated_token_ids, skip_special_tokens=True)).strip()
     special_ids = set(tokenizer.all_special_ids or [])
     features = generation_features(raw_step_logits(outputs), generated_token_ids, special_ids)
     return strip_question_prefix(question, answer), features, rng_seed
@@ -200,6 +202,7 @@ def main():
 
     print(f"Test model: {MODEL_NAME}")
     print(f"Judge model: {active_judge_model()}")
+    print(f"Thinking: {'on' if ENABLE_THINKING else 'off'}")
     print(f"Questions: {len(question_items)} HalluHard items, {len(pending)} pending generations")
     print(f"Output: {SEEDS_PATH.name}")
     if env_str("DRY_RUN", "") == "1":
@@ -252,6 +255,7 @@ def main():
             "qwen_answer": answer,
             "model_name": MODEL_NAME,
             "judge_model_name": active_judge_model(),
+            "enable_thinking": ENABLE_THINKING,
             "max_new_tokens": SEED_MAX_NEW_TOKENS,
             "temperature": TEMPERATURE,
             "top_p": TOP_P,

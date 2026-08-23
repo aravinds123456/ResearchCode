@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import time
 
-from cascade import DEFAULT_OPENAI_JUDGE, env_int, env_str, strip_thinking
+from cascade import DEFAULT_OPENAI_JUDGE, ENABLE_THINKING, env_int, env_str, strip_thinking
 
 GEMINI_RETRIES = env_int("GEMINI_RETRIES", 5)
 MAX_NEW_TOKENS = env_int("MAX_NEW_TOKENS", 400)
@@ -56,7 +56,7 @@ def init_model(name: str):
     device = resolve_device()
     dtype = resolve_dtype(device)
     trust = env_str("TRUST_REMOTE_CODE", "0") == "1"
-    print(f"Loading {name} on {device} ({dtype})...")
+    print(f"Loading {name} on {device} ({dtype}), thinking={'on' if ENABLE_THINKING else 'off'}...")
     tokenizer = AutoTokenizer.from_pretrained(name, trust_remote_code=trust)
     model = AutoModelForCausalLM.from_pretrained(
         name, dtype=dtype, trust_remote_code=trust,
@@ -69,13 +69,58 @@ def init_model(name: str):
     return tokenizer, model, device
 
 
+_THINKING_MODE_LOGGED = False
+
+
+def with_no_think_tag(messages):
+    """Copy messages and append Qwen's /no_think soft switch to the last user turn."""
+    copied = [{**message} for message in messages]
+    for message in reversed(copied):
+        if message.get("role") == "user":
+            content = str(message.get("content") or "").rstrip()
+            if "/no_think" not in content:
+                message["content"] = f"{content}\n/no_think"
+            break
+    return copied
+
+
+def _log_thinking_mode(how: str) -> None:
+    global _THINKING_MODE_LOGGED
+    if _THINKING_MODE_LOGGED:
+        return
+    _THINKING_MODE_LOGGED = True
+    state = "on" if ENABLE_THINKING else "off"
+    print(f"Qwen reasoning/thinking: {state} ({how})")
+
+
 def build_model_inputs(messages):
+    if tokenizer is None:
+        raise RuntimeError("Call init_model() before build_model_inputs().")
     kwargs = dict(add_generation_prompt=True, return_tensors="pt", return_dict=True)
-    # Qwen3.5 otherwise spends the token budget on a hidden chain-of-thought.
+    if ENABLE_THINKING:
+        _log_thinking_mode("ENABLE_THINKING=1")
+        try:
+            return tokenizer.apply_chat_template(messages, enable_thinking=True, **kwargs)
+        except TypeError:
+            return tokenizer.apply_chat_template(messages, **kwargs)
+
+    # Qwen3.5-4B thinks unless the chat template gets an explicit hard switch.
     try:
-        return tokenizer.apply_chat_template(messages, enable_thinking=False, **kwargs)
+        encoded = tokenizer.apply_chat_template(messages, enable_thinking=False, **kwargs)
+        _log_thinking_mode("enable_thinking=False")
+        return encoded
     except TypeError:
-        return tokenizer.apply_chat_template(messages, **kwargs)
+        pass
+    try:
+        encoded = tokenizer.apply_chat_template(
+            messages, chat_template_kwargs={"enable_thinking": False}, **kwargs
+        )
+        _log_thinking_mode("chat_template_kwargs enable_thinking=False")
+        return encoded
+    except TypeError:
+        pass
+    _log_thinking_mode("/no_think fallback; tokenizer has no enable_thinking argument")
+    return tokenizer.apply_chat_template(with_no_think_tag(messages), **kwargs)
 
 
 def generate_response(messages, max_new_tokens: int | None = None) -> str:
