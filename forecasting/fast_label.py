@@ -39,12 +39,13 @@ Return ONLY valid JSON:
 {{"final_label": "corrected|snowballing|isolated", "reason": "one sentence"}}"""
 
         try:
-            r = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
+            r = client.responses.create(
+                model=os.environ.get("OPENAI_LABEL_MODEL", "gpt-5-mini"),
+                input=prompt,
+                reasoning={"effort": "minimal"},
+                text={"format": {"type": "json_object"}},
             )
-            result = parse_json(r.choices[0].message.content)
+            result = parse_json(r.output_text)
             result["question_number"] = row["question_number"]
             out.write(json.dumps(result) + "\n")
             print(row["question_number"], result["final_label"])

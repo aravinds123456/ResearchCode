@@ -4,7 +4,7 @@ import torch
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-MODEL_NAME = "Qwen/Qwen3.5-2B"
+MODEL_NAME = "Qwen/Qwen3.5-4B"
 
 INPUT_PATH = "../forecasting/batch_results.jsonl"
 OUTPUT_PATH = "../forecasting/future_turns.jsonl"

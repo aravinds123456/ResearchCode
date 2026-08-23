@@ -5,12 +5,13 @@ from __future__ import annotations
 import os
 import time
 
-from cascade import env_int, env_str, strip_thinking
+from cascade import DEFAULT_OPENAI_JUDGE, env_int, env_str, strip_thinking
 
 GEMINI_RETRIES = env_int("GEMINI_RETRIES", 5)
 MAX_NEW_TOKENS = env_int("MAX_NEW_TOKENS", 400)
 JUDGE_MODEL_NAME = env_str("JUDGE_MODEL", "gemini-2.5-flash")
-OPENAI_MODEL = env_str("OPENAI_LABEL_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = env_str("OPENAI_LABEL_MODEL", DEFAULT_OPENAI_JUDGE)
+OPENAI_REASONING_EFFORT = env_str("OPENAI_REASONING_EFFORT", "minimal")
 
 tokenizer = None
 model = None
@@ -108,22 +109,50 @@ def load_qwen(name: str):
     return chat
 
 
+def _uses_responses_api(name: str) -> bool:
+    lowered = name.lower()
+    return lowered.startswith(("gpt-5", "o1", "o3", "o4"))
+
+
+def _openai_text(client, prompt: str, as_json: bool) -> str:
+    """GPT-5 rejects temperature=0 on chat completions; use the Responses API."""
+    if _uses_responses_api(OPENAI_MODEL):
+        kwargs = {
+            "model": OPENAI_MODEL,
+            "input": prompt,
+            "reasoning": {"effort": OPENAI_REASONING_EFFORT},
+        }
+        if as_json:
+            kwargs["text"] = {"format": {"type": "json_object"}}
+        return (client.responses.create(**kwargs).output_text or "").strip()
+    extra = {"response_format": {"type": "json_object"}} if as_json else {}
+    return (
+        client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            **extra,
+        ).choices[0].message.content
+        or ""
+    ).strip()
+
+
 def gpt(prompt: str, as_json: bool = True):
     from openai import OpenAI
 
     if not os.environ.get("OPENAI_API_KEY", "").strip():
         raise SystemExit("Set OPENAI_API_KEY")
-    extra = {"response_format": {"type": "json_object"}} if as_json else {}
-    reply = OpenAI().chat.completions.create(
-        model=OPENAI_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-        **extra,
-    ).choices[0].message.content or ""
+    reply = _openai_text(OpenAI(), prompt, as_json=as_json)
     if as_json:
         import json
         return json.loads(reply or "{}")
     return reply
+
+
+def active_judge_model() -> str:
+    if judge_backend() == "gemini":
+        return JUDGE_MODEL_NAME
+    return OPENAI_MODEL
 
 
 def setup_gemini():

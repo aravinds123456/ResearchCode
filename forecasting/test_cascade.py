@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cascade import (
     CATS,
     DEFAULT_MAX_SEEDS,
+    DEFAULT_OPENAI_JUDGE,
+    DEFAULT_TEST_MODEL,
     DEFAULT_TURNS,
     OUTCOMES,
     PARTIAL_RUN,
@@ -77,6 +79,13 @@ class DesignDefaultTests(unittest.TestCase):
     def test_default_run_is_fifty_seeds_and_three_turns(self):
         self.assertEqual(DEFAULT_MAX_SEEDS, 50)
         self.assertEqual(DEFAULT_TURNS, 3)
+
+    def test_default_models_are_qwen35_4b_and_gpt5_mini(self):
+        self.assertEqual(DEFAULT_TEST_MODEL, "Qwen/Qwen3.5-4B")
+        self.assertEqual(DEFAULT_OPENAI_JUDGE, "gpt-5-mini")
+        from runtime import _uses_responses_api
+        self.assertTrue(_uses_responses_api("gpt-5-mini"))
+        self.assertFalse(_uses_responses_api("gpt-4o-mini"))
 
 
 class SamplingTests(unittest.TestCase):
@@ -198,7 +207,7 @@ class PartialRunTests(unittest.TestCase):
                 out=str(out),
                 resume=False,
                 dry_run=True,
-                model="Qwen/Qwen3.5-2B",
+                model="Qwen/Qwen3.5-4B",
             )
             cmd_tree(args)
             lines = [json.loads(line) for line in out.read_text().splitlines() if line.strip()]

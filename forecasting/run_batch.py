@@ -5,7 +5,7 @@ from google import genai
 from google.genai import types
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-MODEL_NAME = "Qwen/Qwen3.5-2B"
+MODEL_NAME = "Qwen/Qwen3.5-4B"
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to("mps")

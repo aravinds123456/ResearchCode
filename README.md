@@ -128,7 +128,7 @@ python forecasting/pipeline.py tree --seeds forecasting/seeds_meta-llama-llama-3
 
 `python maincode.py` still works and maps HallucinationResearchTest env vars (`TEST_MODEL`, `MAX_EXAMPLES`, `INPUT_PATH`, `OUTPUT_PATH`, `NUM_TURNS`) onto `pipeline.py tree`.
 
-Default design: 50 domain-balanced hallucinating seeds, five pure strategies (dependency-seeking, neutral, skeptical, accepting, topic-shift), **three** turns, greedy decoding with thinking disabled. Do not mix follow-up styles inside a branch if you want to report a per-strategy table.
+Default design: 50 domain-balanced hallucinating seeds, five pure strategies (dependency-seeking, neutral, skeptical, accepting, topic-shift), **three** turns, greedy decoding with thinking disabled. Defaults: student model `Qwen/Qwen3.5-4B` (`TEST_MODEL`), OpenAI judge `gpt-5-mini` (`OPENAI_LABEL_MODEL`). Do not mix follow-up styles inside a branch if you want to report a per-strategy table.
 
 To publish this experiment as its own GitHub repo:
 

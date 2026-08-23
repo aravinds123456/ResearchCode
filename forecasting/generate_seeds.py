@@ -23,6 +23,7 @@ if str(DIR) not in sys.path:
     sys.path.insert(0, str(DIR))
 
 from cascade import (
+    DEFAULT_TEST_MODEL,
     DIR,
     DOMAINS,
     env_float,
@@ -34,8 +35,7 @@ from cascade import (
     write,
 )
 
-MODEL_NAME = env_str("TEST_MODEL", env_str("QWEN_MODEL", "Qwen/Qwen3.5-2B"))
-JUDGE_MODEL_NAME = env_str("JUDGE_MODEL", "gemini-2.5-flash")
+MODEL_NAME = env_str("TEST_MODEL", env_str("QWEN_MODEL", DEFAULT_TEST_MODEL))
 SEED_SCHEMA_VERSION = 2
 SEED_MAX_NEW_TOKENS = env_int("SEED_MAX_NEW_TOKENS", 300)
 MAX_QUESTIONS = env_int("MAX_QUESTIONS", 0)
@@ -196,7 +196,10 @@ def main():
         for sample_index in range(SAMPLES_PER_QUESTION)
         if (number, sample_index) not in processed_samples
     ]
+    from runtime import active_judge_model, judge_backend, setup_gemini
+
     print(f"Test model: {MODEL_NAME}")
+    print(f"Judge model: {active_judge_model()}")
     print(f"Questions: {len(question_items)} HalluHard items, {len(pending)} pending generations")
     print(f"Output: {SEEDS_PATH.name}")
     if env_str("DRY_RUN", "") == "1":
@@ -206,7 +209,6 @@ def main():
         print("Nothing to do.")
         return
 
-    from runtime import judge_backend, setup_gemini
     if judge_backend() == "gemini":
         setup_gemini()
 
@@ -249,7 +251,7 @@ def main():
             "model_answer": answer,
             "qwen_answer": answer,
             "model_name": MODEL_NAME,
-            "judge_model_name": JUDGE_MODEL_NAME,
+            "judge_model_name": active_judge_model(),
             "max_new_tokens": SEED_MAX_NEW_TOKENS,
             "temperature": TEMPERATURE,
             "top_p": TOP_P,
