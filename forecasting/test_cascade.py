@@ -89,6 +89,13 @@ class DesignDefaultTests(unittest.TestCase):
         self.assertTrue(_uses_responses_api("gpt-5-mini"))
         self.assertFalse(_uses_responses_api("gpt-4o-mini"))
 
+    def test_seed_judge_treats_unsupported_facts_as_hallucinations(self):
+        from generate_seeds import SEED_JUDGE_TEMPLATE, parse_seed_judgement
+        self.assertIn("without support", SEED_JUDGE_TEMPLATE)
+        self.assertIn("wrong, fabricated", SEED_JUDGE_TEMPLATE)
+        label, _ = parse_seed_judgement("Overall label: Hallucinating\nReason: invented citation")
+        self.assertEqual(label, "Hallucinating")
+
 
 class SamplingTests(unittest.TestCase):
     def test_round_robin_stays_balanced_when_truncated(self):

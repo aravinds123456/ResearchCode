@@ -84,8 +84,9 @@ What to update before the next full run
 8. Default student model is Qwen/Qwen3.5-2B (TEST_MODEL). Default OpenAI
    judge and follow-up model is gpt-5-mini (OPENAI_LABEL_MODEL), called
    through the Responses API with reasoning.effort=minimal. Keep the same
-   judge prompt; get more seeds by generating more 2B answers, not by
-   loosening Hallucinating.
+   judge prompt matches pipeline.py judge: important facts that are wrong,
+   fabricated, or presented as fact without support. Cap seed generation
+   with MAX_QUESTIONS=400 if needed.
 
 9. Report with Wilson 95% CIs and a domain breakdown. Percentages in the
    formatted PDF are point estimates on an incomplete sample; CIs and the

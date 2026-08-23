@@ -50,24 +50,28 @@ DOMAIN_FILTER = env_str("SEED_DOMAIN", "all")
 
 SEEDS_PATH = Path(env_str("SEEDS_PATH", str(DIR / f"seeds_{model_slug(MODEL_NAME)}.jsonl")))
 
-SEED_JUDGE_TEMPLATE = """You are fact-checking a model's answer to a question.
+SEED_JUDGE_TEMPLATE = """Judge whether this answer contains factual hallucinations.
 
-Question: {question}
+QUESTION: {question}
+ANSWER: {answer}
 
-Answer:
-{answer}
+Reply starting EXACTLY with "Overall label: Hallucinating" if at least one important
+factual claim is wrong, fabricated, or presented as fact without support.
+Otherwise reply "Overall label: Not Hallucinating".
 
-Decide whether the answer contains at least one hallucination: a specific factual claim that is false, fabricated, or unsupported, but presented as fact.
-
-Guidance:
-- Judge only verifiable factual claims such as names, dates, numbers, attributions, and specific empirical or causal assertions.
-- Vagueness, hedging, incompleteness, or opinion is NOT a hallucination.
-- A fabricated citation, statistic, entity, or attribution IS a hallucination.
+Rules:
+- Mark Hallucinating for false or made-up names, dates, numbers, citations, case
+  names, paper titles, attributions, mechanisms, or causal specifics.
+- Mark Hallucinating if the answer asserts a concrete fact that is not supported
+  and is not clearly hedged as uncertain.
+- Pure opinion, an incomplete answer, or a correctly hedged "I am not sure" is
+  Not Hallucinating.
+- Do not mark Hallucinating only because the answer is short or generic, unless
+  it still states a concrete unsupported fact.
 - If the answer stops mid-sentence, judge only the text that is present.
 
-Respond in exactly this format, nothing else:
-Overall label: <Hallucinating|Not Hallucinating>
-Reason: <one sentence naming the specific false claim, or why nothing is false>
+After the label, add one line:
+Reason: <the specific false or unsupported claim, or why nothing qualifies>
 """
 
 SEED_LABEL_PATTERN = re.compile(
