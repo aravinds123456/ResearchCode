@@ -229,7 +229,7 @@ def env_float(name: str, default: float) -> float:
     return float(value) if value else default
 
 
-DEFAULT_MAX_SEEDS = env_int("MAX_EXAMPLES", 50)
+DEFAULT_MAX_SEEDS = env_int("MAX_EXAMPLES", 100)
 DEFAULT_TURNS = env_int("NUM_TURNS", 3)
 # Qwen3.5 dense instruct checkpoints are 0.8B / 2B / 4B / 9B; there is no 3.5B id.
 # Qwen/Qwen3.5-4B is the 3.5-family model under test (replacing Qwen3.5-2B).

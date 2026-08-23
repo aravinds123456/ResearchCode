@@ -9,7 +9,7 @@ working with the HallucinationResearchTest environment variables:
 Prefer the explicit CLI:
 
     python forecasting/generate_seeds.py
-    python forecasting/pipeline.py tree --max-seeds 50 --levels 3 --resume
+    python forecasting/pipeline.py tree --max-seeds 100 --levels 3 --resume
     python forecasting/pipeline.py report --from-partial
 """
 
@@ -30,7 +30,7 @@ def main() -> None:
     }:
         seeds = os.environ.get("INPUT_PATH", str(FORECASTING / "batch_results.jsonl"))
         out = os.environ.get("OUTPUT_PATH", str(FORECASTING / "cascade_tree.jsonl"))
-        max_seeds = os.environ.get("MAX_EXAMPLES", "50")
+        max_seeds = os.environ.get("MAX_EXAMPLES", "100")
         levels = os.environ.get("NUM_TURNS", "3")
         extra = sys.argv[1:]
         sys.argv = [

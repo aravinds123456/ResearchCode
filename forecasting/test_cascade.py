@@ -77,8 +77,8 @@ class LabelTests(unittest.TestCase):
 
 
 class DesignDefaultTests(unittest.TestCase):
-    def test_default_run_is_fifty_seeds_and_three_turns(self):
-        self.assertEqual(DEFAULT_MAX_SEEDS, 50)
+    def test_default_run_is_hundred_seeds_and_three_turns(self):
+        self.assertEqual(DEFAULT_MAX_SEEDS, 100)
         self.assertEqual(DEFAULT_TURNS, 3)
 
     def test_default_models_are_qwen35_4b_and_gpt5_mini(self):

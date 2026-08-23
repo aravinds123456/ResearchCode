@@ -2,7 +2,7 @@
 
   python forecasting/pipeline.py answer --domain all --resume
   python forecasting/pipeline.py judge  --domain all --resume
-  python forecasting/pipeline.py tree   --max-seeds 50 --levels 3 --resume
+  python forecasting/pipeline.py tree   --max-seeds 100 --levels 3 --resume
   python forecasting/pipeline.py label  --resume
   python forecasting/pipeline.py report --from-partial
   python forecasting/pipeline.py tree --dry-run --max-seeds 2

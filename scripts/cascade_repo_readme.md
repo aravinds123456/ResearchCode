@@ -1,8 +1,8 @@
-# Hallucination Cascade Forecasting (50 seeds x 3 turns)
+# Hallucination Cascade Forecasting (100 seeds x 3 turns)
 
 Standalone experiment: HalluHard 5-strategy tree + HallucinationResearchTest DROP/CORRECT/REPEAT/DEPEND labels.
 
-**Default design: 50 hallucinating seeds x 5 follow-up strategies x 3 turns = 250 branches / 750 answers.**
+**Default design: 100 hallucinating seeds x 5 follow-up strategies x 3 turns = 500 branches / 1500 answers.**
 
 Strategies: dependency-seeking, neutral, skeptical, accepting, topic-shift.
 
@@ -22,15 +22,15 @@ export OPENAI_API_KEY=...
 ```bash
 python forecasting/pipeline.py answer --domain all --resume
 python forecasting/pipeline.py judge  --domain all --resume
-python forecasting/pipeline.py tree   --max-seeds 50 --levels 3 --resume
+python forecasting/pipeline.py tree   --max-seeds 100 --levels 3 --resume
 python forecasting/pipeline.py report
 ```
 
-`python maincode.py` defaults to 50 seeds and 3 turns (`MAX_EXAMPLES`, `NUM_TURNS`).
+`python maincode.py` defaults to 100 seeds and 3 turns (`MAX_EXAMPLES`, `NUM_TURNS`).
 
 ```bash
 TEST_MODEL=Qwen/Qwen3.5-4B python forecasting/generate_seeds.py
-python forecasting/pipeline.py tree --seeds forecasting/seeds_qwen-qwen3.5-4b.jsonl --max-seeds 50 --levels 3 --resume
+python forecasting/pipeline.py tree --seeds forecasting/seeds_qwen-qwen3.5-4b.jsonl --max-seeds 100 --levels 3 --resume
 ```
 
 ```bash

@@ -45,10 +45,10 @@ What to update before the next full run
    Or, for a new model:
      TEST_MODEL=Qwen/Qwen3.5-4B python forecasting/generate_seeds.py
 
-1. Run the 50 x 5 x 3 experiment. Default design is 50 seeds x 5 strategies
-   x 3 turns (250 branches / 750 answers). The formatted PDF was a 5-turn
+1. Run the 100 x 5 x 3 experiment. Default design is 100 seeds x 5 strategies
+   x 3 turns (500 branches / 1500 answers). The formatted PDF was a 5-turn
    100-seed plan that stopped at 61 seeds. Start the new run with:
-     python forecasting/pipeline.py tree --max-seeds 50 --levels 3 --resume
+     python forecasting/pipeline.py tree --max-seeds 100 --levels 3 --resume
      python forecasting/pipeline.py label --resume
      python forecasting/pipeline.py report
 
@@ -519,7 +519,7 @@ CORRECT = recovery.</p>
 <div class="note"><strong>This is still a partial run.</strong>
 Planned {complete['planned_branches']} branches; captured {complete['captured_branches']}.
 Captured domain mix: {html_escape(domain_mix)}. Finish with
-<code>python forecasting/pipeline.py tree --max-seeds 50 --levels 3 --resume</code>.
+<code>python forecasting/pipeline.py tree --max-seeds 100 --levels 3 --resume</code>.
 </div>
 <h2>Headline findings (same-seed, stronger than the formatted PDF)</h2>
 <ul>{findings_html}</ul>
