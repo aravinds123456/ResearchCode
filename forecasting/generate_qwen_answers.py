@@ -3,7 +3,7 @@ import torch
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-MODEL_NAME = "Qwen/Qwen3.5-4B"
+MODEL_NAME = "Qwen/Qwen3.5-2B"
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to("mps")

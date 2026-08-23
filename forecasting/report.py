@@ -43,7 +43,7 @@ What to update before the next full run
      python forecasting/pipeline.py answer --domain all --resume
      python forecasting/pipeline.py judge  --domain all --resume
    Or, for a new model:
-     TEST_MODEL=Qwen/Qwen3.5-4B python forecasting/generate_seeds.py
+     TEST_MODEL=Qwen/Qwen3.5-2B python forecasting/generate_seeds.py
 
 1. Run the 100 x 5 x 3 experiment. Default design is 100 seeds x 5 strategies
    x 3 turns (500 branches / 1500 answers). The formatted PDF was a 5-turn
@@ -62,7 +62,7 @@ What to update before the next full run
    states (e.g. seed 1 accepting is five "persisted" turns labeled CORRECT).
    Derived outcomes remove that inconsistency.
 
-4. Turn thinking off and strip <think> blocks. Qwen3.5-4B thinks by default;
+4. Turn thinking off and strip <think> blocks. Qwen3.5 thinks by default;
    the runner hard-disables it with enable_thinking=False (override with
    ENABLE_THINKING=1) and still strips leftover think tags. Otherwise the
    token budget is spent on hidden chain-of-thought and the question is echoed.
@@ -81,10 +81,11 @@ What to update before the next full run
    sequences are not interpretable as a user-strategy effect, which is the
    claim the PDF tables make.
 
-8. Default student model is Qwen/Qwen3.5-4B (TEST_MODEL). Default OpenAI
+8. Default student model is Qwen/Qwen3.5-2B (TEST_MODEL). Default OpenAI
    judge and follow-up model is gpt-5-mini (OPENAI_LABEL_MODEL), called
-   through the Responses API with reasoning.effort=minimal. The captured
-   PDF used Qwen3.5-2B; re-generate seeds before comparing to that run.
+   through the Responses API with reasoning.effort=minimal. Keep the same
+   judge prompt; get more seeds by generating more 2B answers, not by
+   loosening Hallucinating.
 
 9. Report with Wilson 95% CIs and a domain breakdown. Percentages in the
    formatted PDF are point estimates on an incomplete sample; CIs and the
@@ -688,7 +689,7 @@ def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_p
             "planned_seeds": data.get("planned_seeds", 100),
             "source": "formatted partial run",
             "sampling": data.get("sampling", {}),
-            "model": data.get("model", "Qwen/Qwen3.5-4B"),
+            "model": data.get("model", "Qwen/Qwen3.5-2B"),
         }
         print("Source: formatted 61-seed captured run (PDF values preserved).")
         sampling = data.get("sampling", {})

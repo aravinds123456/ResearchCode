@@ -104,7 +104,7 @@ def build_model_inputs(messages):
         except TypeError:
             return tokenizer.apply_chat_template(messages, **kwargs)
 
-    # Qwen3.5-4B thinks unless the chat template gets an explicit hard switch.
+    # Qwen3.5 thinks unless the chat template gets an explicit hard switch.
     try:
         encoded = tokenizer.apply_chat_template(messages, enable_thinking=False, **kwargs)
         _log_thinking_mode("enable_thinking=False")

@@ -13,7 +13,7 @@ with open("forecasting/batch_results.jsonl") as source:
                     {"role": "assistant", "content": data["qwen_answer"], "turn_index": 1}
                 ],
                 "task_name": "research_questions",
-                "model_name": "Qwen3.5-4B",
+                "model_name": "Qwen3.5-2B",
                 "metadata": data,
             }
             output.write(json.dumps(record) + "\n")

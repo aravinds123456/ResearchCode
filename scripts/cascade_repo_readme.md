@@ -6,7 +6,7 @@ Standalone experiment: HalluHard 5-strategy tree + HallucinationResearchTest DRO
 
 Strategies: dependency-seeking, neutral, skeptical, accepting, topic-shift.
 
-**Default models:** student `Qwen/Qwen3.5-4B` (`TEST_MODEL`) with thinking/reasoning **off**, judge `gpt-5-mini` (`OPENAI_LABEL_MODEL`).
+**Default models:** student `Qwen/Qwen3.5-2B` (`TEST_MODEL`) with thinking/reasoning **off**, judge `gpt-5-mini` (`OPENAI_LABEL_MODEL`).
 
 ## Setup
 
@@ -29,8 +29,8 @@ python forecasting/pipeline.py report
 `python maincode.py` defaults to 100 seeds and 3 turns (`MAX_EXAMPLES`, `NUM_TURNS`).
 
 ```bash
-TEST_MODEL=Qwen/Qwen3.5-4B python forecasting/generate_seeds.py
-python forecasting/pipeline.py tree --seeds forecasting/seeds_qwen-qwen3.5-4b.jsonl --max-seeds 100 --levels 3 --resume
+TEST_MODEL=Qwen/Qwen3.5-2B python forecasting/generate_seeds.py
+python forecasting/pipeline.py tree --seeds forecasting/seeds_qwen-qwen3.5-2b.jsonl --max-seeds 100 --levels 3 --resume
 ```
 
 ```bash
