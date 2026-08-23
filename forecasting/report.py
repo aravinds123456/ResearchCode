@@ -18,7 +18,6 @@ if str(DIR) not in sys.path:
 
 from cascade import (
     CATS,
-    DISPLAY_STATES,
     DOMAIN_ORDER,
     LABELS,
     OUTCOMES,
@@ -26,6 +25,7 @@ from cascade import (
     TREE,
     chi_square_2x2,
     domain_of,
+    mcnemar,
     normalize_outcome,
     rows,
     wilson,
@@ -152,22 +152,37 @@ def print_table(title: str, table: dict[str, Counter], order: list[str]) -> None
         print(f"{key:<22} {n:>4}" + "".join(f"{fmt_cell(counts[o], n):>28}" for o in OUTCOMES))
 
 
-def pairwise_recovery(records: list[dict]) -> list[tuple[str, str, float, float]]:
-    """Skeptical CORRECT vs every other strategy."""
+def is_correct(rec: dict) -> bool:
+    return rec.get("final_label") == "CORRECT"
+
+
+def is_entrench(rec: dict) -> bool:
+    return rec.get("final_label") in ("REPEAT", "DEPEND")
+
+
+def complete_seed_maps(records: list[dict]) -> list[dict[str, dict]]:
+    by_seed: dict = defaultdict(dict)
+    for rec in records:
+        by_seed[rec["question_number"]][rec["follow_up_mode"]] = rec
+    needed = set(CATS)
+    return [mapping for mapping in by_seed.values() if needed <= set(mapping)]
+
+
+def pairwise_recovery(records: list[dict]) -> list[tuple[str, str, str, float, float]]:
+    """Unpaired Yates chi-square. Prefer mcnemar_pairs when seeds are complete."""
     by = defaultdict(lambda: Counter())
     for rec in records:
         by[rec["follow_up_mode"]][rec["final_label"]] += 1
         by[rec["follow_up_mode"]]["n"] += 1
     results = []
-    if "skeptical" not in by:
-        return results
-    s_n, s_c = by["skeptical"]["n"], by["skeptical"]["CORRECT"]
-    for cat in CATS:
-        if cat == "skeptical" or cat not in by:
-            continue
-        o_n, o_c = by[cat]["n"], by[cat]["CORRECT"]
-        chi, p = chi_square_2x2(s_c, s_n - s_c, o_c, o_n - o_c)
-        results.append((cat, "CORRECT", chi, p))
+    if "skeptical" in by:
+        s_n, s_c = by["skeptical"]["n"], by["skeptical"]["CORRECT"]
+        for cat in CATS:
+            if cat == "skeptical" or cat not in by:
+                continue
+            o_n, o_c = by[cat]["n"], by[cat]["CORRECT"]
+            chi, p = chi_square_2x2(s_c, s_n - s_c, o_c, o_n - o_c)
+            results.append(("skeptical", cat, "CORRECT", chi, p))
     if "dependency-seeking" in by:
         d_n = by["dependency-seeking"]["n"]
         d_bad = by["dependency-seeking"]["REPEAT"] + by["dependency-seeking"]["DEPEND"]
@@ -177,8 +192,124 @@ def pairwise_recovery(records: list[dict]) -> list[tuple[str, str, float, float]
             o_n = by[cat]["n"]
             o_bad = by[cat]["REPEAT"] + by[cat]["DEPEND"]
             chi, p = chi_square_2x2(d_bad, d_n - d_bad, o_bad, o_n - o_bad)
-            results.append((cat, "REPEAT+DEPEND", chi, p))
+            results.append(("dependency-seeking", cat, "REPEAT+DEPEND", chi, p))
     return results
+
+
+def mcnemar_pairs(
+    records: list[dict],
+    left: str,
+    predicate,
+    kind: str,
+) -> list[tuple]:
+    """Same-seed McNemar: left strategy vs each other strategy."""
+    seeds = complete_seed_maps(records)
+    out = []
+    for right in CATS:
+        if right == left:
+            continue
+        a_only = b_only = both = neither = 0
+        n = 0
+        for seed in seeds:
+            if left not in seed or right not in seed:
+                continue
+            a, b = predicate(seed[left]), predicate(seed[right])
+            n += 1
+            if a and b:
+                both += 1
+            elif a:
+                a_only += 1
+            elif b:
+                b_only += 1
+            else:
+                neither += 1
+        if n == 0:
+            continue
+        chi, p = mcnemar(a_only, b_only)
+        out.append((left, right, kind, a_only, b_only, both, neither, chi, p))
+    return out
+
+
+def turn1_forecast(records: list[dict]) -> dict[str, Counter]:
+    table: dict[str, Counter] = defaultdict(Counter)
+    for rec in records:
+        state = rec.get("turn_state_1")
+        if not state:
+            continue
+        table[state][rec["final_label"]] += 1
+        table[state]["n"] += 1
+    return table
+
+
+def activity_rates(records: list[dict]) -> dict[str, dict[str, float]]:
+    out: dict[str, dict[str, float]] = {}
+    by = defaultdict(list)
+    for rec in records:
+        by[rec["follow_up_mode"]].append(rec)
+    for cat, rows_ in by.items():
+        states = [
+            rec[f"turn_state_{turn}"]
+            for rec in rows_
+            for turn in range(1, 6)
+            if rec.get(f"turn_state_{turn}")
+        ]
+        n = len(states) or 1
+        out[cat] = {
+            "active": states.count("persisted_active") / n,
+            "corrected": states.count("corrected") / n,
+            "dormant": states.count("persisted_dormant") / n,
+            "n": float(len(states)),
+        }
+    return out
+
+
+def strategy_domain_counts(records: list[dict]) -> dict[str, dict[str, Counter]]:
+    table: dict[str, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
+    for rec in records:
+        cat, domain = rec["follow_up_mode"], rec.get("domain") or domain_of(rec)
+        table[cat][domain][rec["final_label"]] += 1
+        table[cat][domain]["n"] += 1
+    return table
+
+
+def headline_findings(records: list[dict]) -> list[str]:
+    seeds = complete_seed_maps(records)
+    n = len(seeds)
+    findings = []
+    if n:
+        sk = sum(is_correct(s["skeptical"]) for s in seeds if "skeptical" in s)
+        dep = sum(is_correct(s["dependency-seeking"]) for s in seeds if "dependency-seeking" in s)
+        split = sum(
+            1
+            for s in seeds
+            if is_correct(s.get("skeptical", {})) and is_entrench(s.get("dependency-seeking", {}))
+        )
+        findings.append(
+            f"On {n} complete seeds, skeptical recovers {sk} times and dependency-seeking recovers {dep} "
+            f"(same-seed McNemar). {split}/{n} seeds recover under skeptical AND entrench under dependency-seeking."
+        )
+        topic = mcnemar_pairs(records, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
+        topic_row = next((r for r in topic if r[1] == "topic-shift"), None)
+        if topic_row:
+            findings.append(
+                f"Topic-shift is not a safe off-ramp: entrenchment vs dependency-seeking is not significant "
+                f"(McNemar chi2={topic_row[7]:.2f}, p={topic_row[8]:.2f})."
+            )
+    t1 = turn1_forecast(records)
+    if "corrected" in t1 and t1["corrected"]["n"]:
+        n_c, ok = t1["corrected"]["n"], t1["corrected"]["CORRECT"]
+        findings.append(f"Turn-1 corrected forecasts a CORRECT branch: {ok}/{n_c} ({100 * ok / n_c:.0f}%).")
+    sx = strategy_domain_counts(records)
+    acc = sx.get("accepting", {})
+    if acc:
+        bits = []
+        for domain in DOMAIN_ORDER:
+            n_d = acc[domain]["n"]
+            if n_d:
+                bits.append(f"{domain} {acc[domain]['CORRECT']}/{n_d}")
+        if bits:
+            findings.append("Accepting-style recovery is domain-specific: " + ", ".join(bits) + ".")
+    return findings
 
 
 def turn_dynamics(records: list[dict]) -> dict[str, list[float]]:
@@ -234,6 +365,13 @@ def render_html(records: list[dict], meta: dict, path: Path) -> None:
     complete = completeness(records, meta.get("planned_seeds", 100))
     dynamics = turn_dynamics(records)
     tests = pairwise_recovery(records)
+    paired_correct = mcnemar_pairs(records, "skeptical", is_correct, "CORRECT")
+    paired_entrench = mcnemar_pairs(records, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
+    findings = headline_findings(records)
+    t1 = turn1_forecast(records)
+    activity = activity_rates(records)
+    sx = strategy_domain_counts(records)
+    domain_mix = ", ".join(f"{k} {v}" for k, v in sorted(complete["seed_domains"].items()))
 
     def table_html(table, order):
         rows_html = []
@@ -275,9 +413,39 @@ def render_html(records: list[dict], meta: dict, path: Path) -> None:
         )
 
     tests_html = "".join(
-        f"<tr><td>skeptical vs {html_escape(cat) if kind=='CORRECT' else 'dependency-seeking vs ' + html_escape(cat)}</td>"
+        f"<tr><td>{html_escape(left)} vs {html_escape(right)}</td>"
         f"<td>{html_escape(kind)}</td><td>{chi:.2f}</td><td>{p:.4f}</td></tr>"
-        for cat, kind, chi, p in tests
+        for left, right, kind, chi, p in tests
+    )
+    paired_html = "".join(
+        f"<tr><td>{html_escape(left)} vs {html_escape(right)}</td><td>{html_escape(kind)}</td>"
+        f"<td>{a_only}</td><td>{b_only}</td><td>{both}</td><td>{neither}</td>"
+        f"<td>{chi:.2f}</td><td>{p:.4g}</td></tr>"
+        for left, right, kind, a_only, b_only, both, neither, chi, p in (paired_correct + paired_entrench)
+    )
+    findings_html = "".join(f"<li>{html_escape(item)}</li>" for item in findings)
+    t1_html = "".join(
+        f"<tr><td>{html_escape(state)}</td><td>{counts['n']}</td>"
+        + "".join(f"<td>{html_escape(fmt_cell(counts[o], counts['n']))}</td>" for o in OUTCOMES)
+        + "</tr>"
+        for state, counts in t1.items()
+    )
+    activity_html = "".join(
+        f"<tr><td>{html_escape(cat)}</td>"
+        f"<td>{100 * rates['active']:.0f}%</td>"
+        f"<td>{100 * rates['corrected']:.0f}%</td>"
+        f"<td>{100 * rates['dormant']:.0f}%</td></tr>"
+        for cat, rates in activity.items()
+    )
+    sx_html = "".join(
+        f"<tr><td>{html_escape(cat)}</td>"
+        + "".join(
+            f"<td>{sx[cat][d]['CORRECT']}/{sx[cat][d]['n']} "
+            f"({(100 * sx[cat][d]['CORRECT'] / sx[cat][d]['n']) if sx[cat][d]['n'] else 0:.0f}%)</td>"
+            for d in DOMAIN_ORDER
+        )
+        + "</tr>"
+        for cat in CATS if cat in sx
     )
     dyn_html = "".join(
         f"<tr><td>{html_escape(cat)}</td>" + "".join(
@@ -329,18 +497,33 @@ CORRECT = recovery.</p>
 </div>
 <div class="note"><strong>This is still a partial run.</strong>
 Planned {complete['planned_branches']} branches; captured {complete['captured_branches']}.
-Captured domain mix is {complete['seed_domains']}. Finish with
+Captured domain mix: {html_escape(domain_mix)}. Finish with
 <code>python forecasting/pipeline.py tree --max-seeds 100 --levels 5 --resume</code>.
 </div>
+<h2>Headline findings (same-seed, stronger than the formatted PDF)</h2>
+<ul>{findings_html}</ul>
 <h2>Final aggregate distribution</h2>
 {table_html(by_cat, list(CATS))}
 <h2>By domain</h2>
 {table_html(by_dom, list(DOMAIN_ORDER))}
+<h2>CORRECT rate by strategy and domain</h2>
+<table><thead><tr><th>strategy</th><th>research</th><th>legal</th><th>medical</th></tr></thead>
+<tbody>{sx_html}</tbody></table>
 <h2>Turn-level recovery rate (share of turns labeled corrected)</h2>
 <table><thead><tr><th>strategy</th><th>T1</th><th>T2</th><th>T3</th><th>T4</th><th>T5</th></tr></thead>
 <tbody>{dyn_html}</tbody></table>
-<h2>Pairwise tests</h2>
-<p>Yates-corrected chi-square. Skeptical vs others on CORRECT; dependency-seeking vs others on REPEAT+DEPEND.</p>
+<h2>Claim still in play (share of turns)</h2>
+<table><thead><tr><th>strategy</th><th>persisted_active</th><th>corrected</th><th>persisted_dormant</th></tr></thead>
+<tbody>{activity_html}</tbody></table>
+<h2>Turn-1 state forecasts branch outcome</h2>
+<table><thead><tr><th>turn-1 state</th><th>n</th><th>DROP</th><th>CORRECT</th><th>REPEAT</th><th>DEPEND</th></tr></thead>
+<tbody>{t1_html}</tbody></table>
+<h2>Same-seed McNemar tests</h2>
+<p>Holds the hallucinated claim fixed. a_only = left strategy has the metric, right does not.</p>
+<table><thead><tr><th>contrast</th><th>metric</th><th>a_only</th><th>b_only</th><th>both</th><th>neither</th><th>chi-square</th><th>p</th></tr></thead>
+<tbody>{paired_html}</tbody></table>
+<h2>Unpaired chi-square (for comparison with the formatted PDF)</h2>
+<p>Yates-corrected. Weaker than McNemar because it does not hold the seed fixed.</p>
 <table><thead><tr><th>contrast</th><th>metric</th><th>chi-square</th><th>p</th></tr></thead>
 <tbody>{tests_html}</tbody></table>
 <h2>Incomplete seeds</h2>
@@ -411,9 +594,11 @@ def render_pdf(records: list[dict], meta: dict, path: Path) -> None:
     pdf.body(
         f"Captured {complete['captured_seeds']} / {complete['planned_seeds']} seeds, "
         f"{complete['captured_branches']} / {complete['planned_branches']} branches. "
-        f"Domain mix of captured seeds: {complete['seed_domains']}. "
+        f"Domain mix of captured seeds: {', '.join(f'{k} {v}' for k, v in sorted(complete['seed_domains'].items()))}. "
         "Finish the run with --resume before treating percentages as final."
     )
+    pdf.section("Headline findings")
+    pdf.body(" ".join(headline_findings(records)))
     pdf.section("Aggregate (Wilson 95% CI in brackets)")
     headers = ["category", "n", *OUTCOMES]
     data = []
@@ -434,6 +619,16 @@ def render_pdf(records: list[dict], meta: dict, path: Path) -> None:
         n = counts["n"]
         data.append([domain, n, *[fmt_cell(counts[o], n) for o in OUTCOMES]])
     pdf.table(["domain", "n", *OUTCOMES], data, [28, 10, 38, 38, 38, 38])
+
+    pdf.section("Same-seed McNemar")
+    paired_rows = []
+    for left, right, kind, a_only, b_only, both, neither, chi, p in (
+        mcnemar_pairs(records, "skeptical", is_correct, "CORRECT")
+        + mcnemar_pairs(records, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
+    ):
+        paired_rows.append([f"{left} vs {right}", kind, a_only, b_only, f"{chi:.2f}", f"{p:.3g}"])
+    if paired_rows:
+        pdf.table(["contrast", "metric", "a_only", "b_only", "chi2", "p"], paired_rows, [62, 32, 18, 18, 18, 22])
 
     pdf.section("What to update")
     pdf.body(WHAT_TO_UPDATE)
@@ -498,10 +693,29 @@ def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_p
         for qid, missing in complete["incomplete_seeds"]:
             print(f"  q{qid}: missing {', '.join(missing)}")
 
-    print("\nPairwise tests (Yates chi-square):")
-    for cat, kind, chi, p in pairwise_recovery(records):
-        left = "skeptical" if kind == "CORRECT" else "dependency-seeking"
-        print(f"  {left} vs {cat:<20} {kind:<14} chi2={chi:.2f} p={p:.4f}")
+    print("\nHeadline findings:")
+    for item in headline_findings(records):
+        print(f"  - {item}")
+
+    print("\nSame-seed McNemar (holds the claim fixed):")
+    for left, right, kind, a_only, b_only, both, neither, chi, p in (
+        mcnemar_pairs(records, "skeptical", is_correct, "CORRECT")
+        + mcnemar_pairs(records, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
+    ):
+        print(
+            f"  {left} vs {right:<20} {kind:<14} "
+            f"a_only={a_only} b_only={b_only} both={both} neither={neither} "
+            f"chi2={chi:.2f} p={p:.4g}"
+        )
+
+    print("\nUnpaired chi-square (weaker, does not hold seed fixed):")
+    for left, right, kind, chi, p in pairwise_recovery(records):
+        print(f"  {left} vs {right:<20} {kind:<14} chi2={chi:.2f} p={p:.4f}")
+
+    print("\nTurn-1 state -> branch outcome:")
+    for state, counts in turn1_forecast(records).items():
+        n = counts["n"]
+        print(f"  {state:<20} n={n:>3} " + " ".join(f"{o}={fmt_cell(counts[o], n)}" for o in OUTCOMES))
 
     print("\nTurn-level P(corrected):")
     for cat, rates in turn_dynamics(records).items():

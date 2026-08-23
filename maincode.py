@@ -26,7 +26,7 @@ if str(FORECASTING) not in sys.path:
 
 def main() -> None:
     if len(sys.argv) == 1 or sys.argv[1] not in {
-        "answer", "judge", "tree", "label", "report", "-h", "--help",
+        "answer", "judge", "tree", "label", "report", "seeds", "-h", "--help",
     }:
         seeds = os.environ.get("INPUT_PATH", str(FORECASTING / "batch_results.jsonl"))
         out = os.environ.get("OUTPUT_PATH", str(FORECASTING / "cascade_tree.jsonl"))

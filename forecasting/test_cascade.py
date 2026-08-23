@@ -20,6 +20,7 @@ from cascade import (
     derive_branch_outcome,
     display_state,
     domain_of,
+    mcnemar,
     names,
     parse_judge_label,
     sample_seeds,
@@ -28,7 +29,15 @@ from cascade import (
     strip_thinking,
     wilson,
 )
-from report import completeness, count_table, records_from_partial, render_report
+from report import (
+    completeness,
+    count_table,
+    headline_findings,
+    mcnemar_pairs,
+    is_correct,
+    records_from_partial,
+    render_report,
+)
 
 ENTITIES = ["Scientist B", "compound X47"]
 
@@ -110,6 +119,20 @@ class StatsTests(unittest.TestCase):
         self.assertGreater(chi, 20)
         self.assertLess(p, 1e-5)
 
+    def test_mcnemar_continuity_on_perfect_split(self):
+        chi, p = mcnemar(39, 0)
+        self.assertGreater(chi, 30)
+        self.assertLess(p, 1e-8)
+
+    def test_same_seed_mcnemar_matches_captured_run(self):
+        records = records_from_partial(json.loads(PARTIAL_RUN.read_text()))
+        rows = mcnemar_pairs(records, "skeptical", is_correct, "CORRECT")
+        vs_dep = next(r for r in rows if r[1] == "dependency-seeking")
+        self.assertEqual(vs_dep[3], 39)  # skeptical-only
+        self.assertEqual(vs_dep[4], 0)   # dependency-seeking-only
+        findings = " ".join(headline_findings(records))
+        self.assertIn("21/60", findings)
+
 
 class PartialRunTests(unittest.TestCase):
     def test_json_reproduces_the_formatted_pdf_aggregates(self):
@@ -147,6 +170,10 @@ class PartialRunTests(unittest.TestCase):
             self.assertIn("Hallucination Cascade Forecasting Results", text)
             self.assertIn("Wilson", text)
             self.assertIn("q100018", text)
+            self.assertIn("Same-seed McNemar", text)
+            self.assertNotIn("skeptical vs dependency-seeking vs", text)
+            self.assertIn("dependency-seeking vs topic-shift", text)
+            self.assertIn("Turn-1 state forecasts", text)
             self.assertTrue(html_path.exists())
             self.assertTrue(pdf_path.exists())
 

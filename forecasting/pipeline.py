@@ -279,6 +279,19 @@ def cmd_tree(args) -> None:
                 f"  {cat:<20} {[record[f'turn_state_{i}'] for i in range(1, args.levels + 1)]} "
                 f"-> {derived['branch_outcome']}"
             )
+            if not args.dry_run:
+                write(LABELS, {
+                    "schema_version": SCHEMA_VERSION,
+                    "branch_id": bid,
+                    "question_number": seed["question_number"],
+                    "domain": domain_of(seed),
+                    "answer_model": args.model,
+                    "follow_up_mode": cat,
+                    "reason": "derived from per-turn DROP/CORRECT/REPEAT/DEPEND labels",
+                    "final_label": derived["final_label"],
+                    "derived_label": derived["branch_outcome"],
+                    "label_counts": derived["label_counts"],
+                }, Path(LABELS).exists() or seen)
     print(f"\n-> {out}")
 
 
@@ -328,6 +341,12 @@ def cmd_label(args) -> None:
     cmd_report(args)
 
 
+def cmd_seeds(_args) -> None:
+    """Generate per-model hallucinating seeds (HallucinationResearchTest sampler)."""
+    import generate_seeds
+    generate_seeds.main()
+
+
 def cmd_report(args) -> None:
     from report import render_report
     render_report(
@@ -355,6 +374,7 @@ def main() -> None:
     label = sub.add_parser("label", help="label branch outcomes")
     label.add_argument("--tree", default=str(TREE))
     label.add_argument("--llm-label", action="store_true", help="ask the judge model instead of deriving")
+    sub.add_parser("seeds", help="generate per-model hallucinating seeds")
     report = sub.add_parser("report", help="outcome tables, CIs, and HTML/PDF")
     report.add_argument("--from-partial", action="store_true", help="use the formatted 61-seed captured run")
     report.add_argument("--tree", default=str(TREE))

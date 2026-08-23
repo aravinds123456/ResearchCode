@@ -22,9 +22,6 @@ DIR = Path(__file__).resolve().parent
 if str(DIR) not in sys.path:
     sys.path.insert(0, str(DIR))
 
-import torch
-
-import runtime
 from cascade import (
     DIR,
     DOMAINS,
@@ -36,11 +33,9 @@ from cascade import (
     strip_question_prefix,
     write,
 )
-from features import generation_features
-from runtime import call_gemini, init_model, setup_gemini
 
 MODEL_NAME = env_str("TEST_MODEL", env_str("QWEN_MODEL", "Qwen/Qwen3.5-2B"))
-JUDGE_MODEL_NAME = runtime.JUDGE_MODEL_NAME
+JUDGE_MODEL_NAME = env_str("JUDGE_MODEL", "gemini-2.5-flash")
 SEED_SCHEMA_VERSION = 2
 SEED_MAX_NEW_TOKENS = env_int("SEED_MAX_NEW_TOKENS", 300)
 MAX_QUESTIONS = env_int("MAX_QUESTIONS", 0)
@@ -144,6 +139,11 @@ def raw_step_logits(outputs):
 
 
 def generate_seed_answer(question: str, question_number: int, sample_index: int):
+    import torch
+    import runtime
+    from features import generation_features
+    from runtime import init_model
+
     init_model(MODEL_NAME)
     tokenizer = runtime.tokenizer
     messages = [{"role": "user", "content": question}]
@@ -173,7 +173,7 @@ def generate_seed_answer(question: str, question_number: int, sample_index: int)
 
 
 def judge_seed(question: str, answer: str):
-    from runtime import gpt, judge_backend
+    from runtime import call_gemini, gpt, judge_backend
 
     prompt = SEED_JUDGE_TEMPLATE.format(question=question, answer=answer)
     if judge_backend() == "gemini":
@@ -206,7 +206,7 @@ def main():
         print("Nothing to do.")
         return
 
-    from runtime import judge_backend
+    from runtime import judge_backend, setup_gemini
     if judge_backend() == "gemini":
         setup_gemini()
 

@@ -478,7 +478,16 @@ def chi_square_2x2(a: int, b: int, c: int, d: int) -> tuple[float, float]:
         return 0.0, 1.0
     obs = (a, b, c, d)
     chi = sum((abs(o - e) - 0.5) ** 2 / e for o, e in zip(obs, expected))
-    # chi^2_1 survival: erfc(sqrt(x/2))
+    p = math.erfc(math.sqrt(max(chi, 0.0) / 2.0))
+    return chi, p
+
+
+def mcnemar(b: int, c: int) -> tuple[float, float]:
+    """McNemar with continuity correction. b = A-only, c = B-only."""
+    n = b + c
+    if n == 0:
+        return 0.0, 1.0
+    chi = (abs(b - c) - 1) ** 2 / n
     p = math.erfc(math.sqrt(max(chi, 0.0) / 2.0))
     return chi, p
 
