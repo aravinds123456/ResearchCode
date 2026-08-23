@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from cascade import (
     CATS,
+    DEFAULT_MAX_SEEDS,
+    DEFAULT_TURNS,
     OUTCOMES,
     PARTIAL_RUN,
     backup,
@@ -69,6 +71,12 @@ class LabelTests(unittest.TestCase):
     def test_all_drop_is_drop(self):
         turns = [{"turn": n, "label": "drop"} for n in range(1, 6)]
         self.assertEqual(derive_branch_outcome(turns)["branch_outcome"], "DROP")
+
+
+class DesignDefaultTests(unittest.TestCase):
+    def test_default_run_is_fifty_seeds_and_three_turns(self):
+        self.assertEqual(DEFAULT_MAX_SEEDS, 50)
+        self.assertEqual(DEFAULT_TURNS, 3)
 
 
 class SamplingTests(unittest.TestCase):
@@ -186,7 +194,7 @@ class PartialRunTests(unittest.TestCase):
                 categories="all",
                 seeds=str(Path(__file__).resolve().parent / "batch_results.jsonl"),
                 max_seeds=2,
-                levels=5,
+                levels=3,
                 out=str(out),
                 resume=False,
                 dry_run=True,
@@ -195,6 +203,7 @@ class PartialRunTests(unittest.TestCase):
             cmd_tree(args)
             lines = [json.loads(line) for line in out.read_text().splitlines() if line.strip()]
             self.assertEqual(len(lines), 10)
+            self.assertTrue(all(row["levels"] == 3 for row in lines))
             self.assertEqual({row["follow_up_mode"] for row in lines}, set(CATS))
             self.assertTrue(all(row["branch_outcome"] == "DROP" for row in lines))
             self.assertTrue(all(row.get("domain") in {"research", "legal", "medical"} for row in lines))

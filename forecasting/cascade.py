@@ -229,6 +229,10 @@ def env_float(name: str, default: float) -> float:
     return float(value) if value else default
 
 
+DEFAULT_MAX_SEEDS = env_int("MAX_EXAMPLES", 50)
+DEFAULT_TURNS = env_int("NUM_TURNS", 3)
+
+
 def model_slug(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-").lower()
 

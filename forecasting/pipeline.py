@@ -2,7 +2,7 @@
 
   python forecasting/pipeline.py answer --domain all --resume
   python forecasting/pipeline.py judge  --domain all --resume
-  python forecasting/pipeline.py tree   --max-seeds 100 --levels 5 --resume
+  python forecasting/pipeline.py tree   --max-seeds 50 --levels 3 --resume
   python forecasting/pipeline.py label  --resume
   python forecasting/pipeline.py report --from-partial
   python forecasting/pipeline.py tree --dry-run --max-seeds 2
@@ -24,6 +24,8 @@ if str(DIR) not in sys.path:
 from cascade import (
     BATCH,
     CATS,
+    DEFAULT_MAX_SEEDS,
+    DEFAULT_TURNS,
     DOMAINS,
     HALL,
     LABELS,
@@ -367,8 +369,8 @@ def main() -> None:
     tree = sub.add_parser("tree", help="build the follow-up tree")
     tree.add_argument("--seeds", default=str(BATCH), help="any JSONL with question + answer + judgement")
     tree.add_argument("--out", default=str(TREE))
-    tree.add_argument("--max-seeds", type=int, default=int(os.environ["MAX_EXAMPLES"]) if os.environ.get("MAX_EXAMPLES") else 100)
-    tree.add_argument("--levels", type=int, default=5)
+    tree.add_argument("--max-seeds", type=int, default=DEFAULT_MAX_SEEDS)
+    tree.add_argument("--levels", type=int, default=DEFAULT_TURNS)
     tree.add_argument("--categories", default="all")
     tree.add_argument("--dry-run", action="store_true", help="stub answers, no GPU or API")
     label = sub.add_parser("label", help="label branch outcomes")

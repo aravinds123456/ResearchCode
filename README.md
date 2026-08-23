@@ -114,10 +114,10 @@ HalluHard's 5-strategy cascade tree is merged with [HallucinationResearchTest](h
 # Reproduce the cleaned partial-run report (no GPU)
 python forecasting/pipeline.py report --from-partial
 
-# Full experiment (100 seeds x 5 strategies x 5 turns)
+# Default experiment (50 seeds x 5 strategies x 3 turns)
 python forecasting/pipeline.py answer --domain all --resume
 python forecasting/pipeline.py judge  --domain all --resume
-python forecasting/pipeline.py tree   --max-seeds 100 --levels 5 --resume
+python forecasting/pipeline.py tree   --max-seeds 50 --levels 3 --resume
 python forecasting/pipeline.py label  --resume
 python forecasting/pipeline.py report
 
@@ -128,7 +128,16 @@ python forecasting/pipeline.py tree --seeds forecasting/seeds_meta-llama-llama-3
 
 `python maincode.py` still works and maps HallucinationResearchTest env vars (`TEST_MODEL`, `MAX_EXAMPLES`, `INPUT_PATH`, `OUTPUT_PATH`, `NUM_TURNS`) onto `pipeline.py tree`.
 
-Default design: 100 domain-balanced hallucinating seeds, five pure strategies (dependency-seeking, neutral, skeptical, accepting, topic-shift), five turns, greedy decoding with thinking disabled. Do not mix follow-up styles inside a branch if you want to report a per-strategy table.
+Default design: 50 domain-balanced hallucinating seeds, five pure strategies (dependency-seeking, neutral, skeptical, accepting, topic-shift), **three** turns, greedy decoding with thinking disabled. Do not mix follow-up styles inside a branch if you want to report a per-strategy table.
+
+To publish this experiment as its own GitHub repo:
+
+```bash
+bash scripts/export_cascade_repo.sh /tmp/hallucination-cascade-50x3
+cd /tmp/hallucination-cascade-50x3
+git init -b main && git add . && git commit -m "50 seeds x 3 turns"
+gh repo create hallucination-cascade-50x3 --public --source=. --push
+```
 
 See `python forecasting/pipeline.py report --from-partial` for Wilson CIs, the domain split, and the re-run checklist against the captured 61-seed PDF.
 

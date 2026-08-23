@@ -274,7 +274,7 @@ def main():
     if duplicate_count:
         print(f"Skipped {duplicate_count} duplicate answer(s).")
     print(f"Wrote {SEEDS_PATH}")
-    print(f"\nNext: python forecasting/pipeline.py tree --seeds {SEEDS_PATH} --max-seeds 100 --resume")
+    print(f"\nNext: python forecasting/pipeline.py tree --seeds {SEEDS_PATH} --max-seeds 50 --levels 3 --resume")
 
 
 if __name__ == "__main__":

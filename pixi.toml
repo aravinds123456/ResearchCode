@@ -49,7 +49,7 @@ fpdf2 = "*"
 report = "python report.py"
 forecast-report = "python forecasting/pipeline.py report --from-partial"
 forecast-test = "python -m unittest forecasting.test_pipeline forecasting.test_cascade"
-forecast-tree = "python forecasting/pipeline.py tree --max-seeds 100 --levels 5 --resume"
+forecast-tree = "python forecasting/pipeline.py tree --max-seeds 50 --levels 3 --resume"
 
 # Paper authors task
 paper-authors-data = "python -m paper_authors.data_fetcher"

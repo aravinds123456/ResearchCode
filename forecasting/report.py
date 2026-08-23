@@ -18,6 +18,8 @@ if str(DIR) not in sys.path:
 
 from cascade import (
     CATS,
+    DEFAULT_MAX_SEEDS,
+    DEFAULT_TURNS,
     DOMAIN_ORDER,
     LABELS,
     OUTCOMES,
@@ -43,11 +45,10 @@ What to update before the next full run
    Or, for a new model:
      TEST_MODEL=Qwen/Qwen3.5-2B python forecasting/generate_seeds.py
 
-1. Finish the captured experiment. Planned design is 100 seeds x 5 strategies
-   x 5 turns (500 branches / 2500 answers). The formatted PDF stopped at 61
-   seeds / 302 branches; seed 61 only has dependency-seeking and neutral.
-   Re-run with --resume so completed branches are skipped:
-     python forecasting/pipeline.py tree --max-seeds 100 --levels 5 --resume
+1. Run the 50 x 5 x 3 experiment. Default design is 50 seeds x 5 strategies
+   x 3 turns (250 branches / 750 answers). The formatted PDF was a 5-turn
+   100-seed plan that stopped at 61 seeds. Start the new run with:
+     python forecasting/pipeline.py tree --max-seeds 50 --levels 3 --resume
      python forecasting/pipeline.py label --resume
      python forecasting/pipeline.py report
 
@@ -124,6 +125,18 @@ def records_from_live(tree_path: Path, labels_path: Path) -> list[dict]:
         rec["domain"] = rec.get("domain") or domain_of(rec)
         out.append(rec)
     return out
+
+
+def detected_turns(records: list[dict], default: int = DEFAULT_TURNS) -> int:
+    found = 0
+    for rec in records:
+        levels = rec.get("levels")
+        if isinstance(levels, int):
+            found = max(found, levels)
+        for i in range(1, 12):
+            if rec.get(f"turn_state_{i}") or rec.get(f"future_turn_{i}"):
+                found = max(found, i)
+    return found or default
 
 
 def count_table(records: list[dict], group: str) -> dict[str, Counter]:
@@ -250,7 +263,7 @@ def activity_rates(records: list[dict]) -> dict[str, dict[str, float]]:
         states = [
             rec[f"turn_state_{turn}"]
             for rec in rows_
-            for turn in range(1, 6)
+            for turn in range(1, detected_turns(rows_) + 1)
             if rec.get(f"turn_state_{turn}")
         ]
         n = len(states) or 1
@@ -320,7 +333,7 @@ def turn_dynamics(records: list[dict]) -> dict[str, list[float]]:
         by[rec["follow_up_mode"]].append(rec)
     for cat, rows_ in by.items():
         rates = []
-        for turn in range(1, 6):
+        for turn in range(1, detected_turns(rows_) + 1):
             key = f"turn_state_{turn}"
             vals = [r.get(key) for r in rows_ if r.get(key)]
             if not vals:
@@ -331,7 +344,7 @@ def turn_dynamics(records: list[dict]) -> dict[str, list[float]]:
     return out
 
 
-def completeness(records: list[dict], planned_seeds: int = 100) -> dict:
+def completeness(records: list[dict], planned_seeds: int = DEFAULT_MAX_SEEDS) -> dict:
     seeds = {r["question_number"] for r in records}
     by_seed = defaultdict(set)
     for rec in records:
@@ -362,7 +375,8 @@ def pdf_safe(text: str) -> str:
 def render_html(records: list[dict], meta: dict, path: Path) -> None:
     by_cat = count_table(records, "follow_up_mode")
     by_dom = count_table(records, "domain")
-    complete = completeness(records, meta.get("planned_seeds", 100))
+    n_turns = detected_turns(records)
+    complete = completeness(records, meta.get("planned_seeds", DEFAULT_MAX_SEEDS))
     dynamics = turn_dynamics(records)
     tests = pairwise_recovery(records)
     paired_correct = mcnemar_pairs(records, "skeptical", is_correct, "CORRECT")
@@ -397,18 +411,19 @@ def render_html(records: list[dict], meta: dict, path: Path) -> None:
             turns = "".join(
                 f"<td class='{html_escape(rec.get(f'turn_state_{i}', ''))}'>"
                 f"{html_escape(rec.get(f'turn_state_{i}', ''))}</td>"
-                for i in range(1, 6)
+                for i in range(1, detected_turns(branches) + 1)
             )
             rows_html.append(
                 f"<tr><td>{html_escape(rec['follow_up_mode'])}</td>{turns}"
                 f"<td><b>{html_escape(rec['final_label'])}</b></td></tr>"
             )
+        turn_heads = "".join(f"<th>T{i}</th>" for i in range(1, detected_turns(branches) + 1))
         seed_blocks.append(
             f"<section class='seed'><h3>Seed {html_escape(index)} | q{qid} "
             f"({html_escape(domain_of({'question_number': qid}))})</h3>"
             f"<p class='claim'>Claim excerpt: {html_escape(claim)}</p>"
-            f"<table><thead><tr><th>Strategy</th><th>T1</th><th>T2</th><th>T3</th>"
-            f"<th>T4</th><th>T5</th><th>Outcome</th></tr></thead>"
+            f"<table><thead><tr><th>Strategy</th>{turn_heads}"
+            f"<th>Outcome</th></tr></thead>"
             f"<tbody>{''.join(rows_html)}</tbody></table></section>"
         )
 
@@ -493,12 +508,12 @@ CORRECT = recovery.</p>
   <div><b>{complete['captured_seeds']}</b>seed records</div>
   <div><b>{complete['captured_branches']}</b>captured branches</div>
   <div><b>{complete['planned_seeds']}</b>planned seeds</div>
-  <div><b>5</b>turns per branch</div>
+  <div><b>{n_turns}</b>turns per branch</div>
 </div>
 <div class="note"><strong>This is still a partial run.</strong>
 Planned {complete['planned_branches']} branches; captured {complete['captured_branches']}.
 Captured domain mix: {html_escape(domain_mix)}. Finish with
-<code>python forecasting/pipeline.py tree --max-seeds 100 --levels 5 --resume</code>.
+<code>python forecasting/pipeline.py tree --max-seeds 50 --levels 3 --resume</code>.
 </div>
 <h2>Headline findings (same-seed, stronger than the formatted PDF)</h2>
 <ul>{findings_html}</ul>
@@ -510,7 +525,7 @@ Captured domain mix: {html_escape(domain_mix)}. Finish with
 <table><thead><tr><th>strategy</th><th>research</th><th>legal</th><th>medical</th></tr></thead>
 <tbody>{sx_html}</tbody></table>
 <h2>Turn-level recovery rate (share of turns labeled corrected)</h2>
-<table><thead><tr><th>strategy</th><th>T1</th><th>T2</th><th>T3</th><th>T4</th><th>T5</th></tr></thead>
+<table><thead><tr><th>strategy</th>{''.join(f'<th>T{i}</th>' for i in range(1, n_turns + 1))}</tr></thead>
 <tbody>{dyn_html}</tbody></table>
 <h2>Claim still in play (share of turns)</h2>
 <table><thead><tr><th>strategy</th><th>persisted_active</th><th>corrected</th><th>persisted_dormant</th></tr></thead>
@@ -548,7 +563,7 @@ def render_pdf(records: list[dict], meta: dict, path: Path) -> None:
 
     by_cat = count_table(records, "follow_up_mode")
     by_dom = count_table(records, "domain")
-    complete = completeness(records, meta.get("planned_seeds", 100))
+    complete = completeness(records, meta.get("planned_seeds", DEFAULT_MAX_SEEDS))
 
     class PDF(FPDF):
         def header(self):
@@ -643,9 +658,15 @@ def render_pdf(records: list[dict], meta: dict, path: Path) -> None:
         pdf.cell(0, 5, pdf_safe(f"q{qid} ({domain_of({'question_number': qid})}) {claim}"), new_x="LMARGIN", new_y="NEXT")
         rows_ = []
         for rec in sorted(branches, key=lambda r: list(CATS).index(r["follow_up_mode"]) if r["follow_up_mode"] in CATS else 99):
-            turns = [rec.get(f"turn_state_{i}", "") for i in range(1, 6)]
+            n_turns = detected_turns(branches)
+            turns = [rec.get(f"turn_state_{i}", "") for i in range(1, n_turns + 1)]
             rows_.append([rec["follow_up_mode"], *turns, rec["final_label"]])
-        pdf.table(["strategy", "T1", "T2", "T3", "T4", "T5", "out"], rows_, [32, 28, 28, 28, 28, 28, 18])
+        n_turns = detected_turns(branches)
+        pdf.table(
+            ["strategy", *[f"T{i}" for i in range(1, n_turns + 1)], "out"],
+            rows_,
+            [32, *([28] * n_turns), 18],
+        )
 
     path.parent.mkdir(parents=True, exist_ok=True)
     pdf.output(str(path))
@@ -653,7 +674,7 @@ def render_pdf(records: list[dict], meta: dict, path: Path) -> None:
 
 
 def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_path: Path, pdf_path: Path) -> None:
-    meta = {"planned_seeds": 100, "source": "live"}
+    meta = {"planned_seeds": DEFAULT_MAX_SEEDS, "source": "live"}
     if from_partial or (not rows(tree_path) and PARTIAL_RUN.exists()):
         data = load_partial()
         records = records_from_partial(data)
@@ -682,7 +703,7 @@ def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_p
     print_table("Outcome by follow-up strategy (Wilson 95% CI)", count_table(records, "follow_up_mode"), list(CATS))
     print_table("Outcome by domain", count_table(records, "domain"), list(DOMAIN_ORDER))
 
-    complete = completeness(records, meta.get("planned_seeds", 100))
+    complete = completeness(records, meta.get("planned_seeds", DEFAULT_MAX_SEEDS))
     print(
         f"\nCompleteness: {complete['captured_seeds']}/{complete['planned_seeds']} seeds, "
         f"{complete['captured_branches']}/{complete['planned_branches']} branches"
