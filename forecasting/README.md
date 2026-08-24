@@ -1,6 +1,6 @@
 # Cascade experiment
 
-This folder is the **user-move cascade** study in [aravinds123456/halluhard](https://github.com/aravinds123456/halluhard). It sits on top of HalluHard questions (research, legal, medical). It is not the HalluHard paper’s generic follow-up benchmark.
+Open this file on GitHub at [forecasting/README.md](https://github.com/aravinds123456/halluhard/blob/main/forecasting/README.md). This folder is the **user-move cascade** study in [aravinds123456/halluhard](https://github.com/aravinds123456/halluhard). It sits on top of HalluHard questions (research, legal, medical). It is not the HalluHard paper’s generic follow-up benchmark.
 
 If you just cloned the repo and want to know what *this* experiment is: Qwen has already said something false. We freeze that lie and start **five separate chats** from the same point. After three turns we label what happened to that lie.
 

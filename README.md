@@ -1,5 +1,7 @@
 # HalluHard: A Hard Multi-Turn Hallucination Benchmark
 
+**Cascade experiment docs (this checkout):** [forecasting/README.md](forecasting/README.md)
+
 ![HalluHard open vs proprietary models](pics/halluhard_vertical_bar_open_vs_prop.png)
 
 A framework for evaluating hallucinations in multi-turn conversations across challenging domains.
