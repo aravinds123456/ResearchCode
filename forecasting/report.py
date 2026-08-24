@@ -21,14 +21,19 @@ from cascade import (
     DEFAULT_MAX_SEEDS,
     DEFAULT_TURNS,
     DOMAIN_ORDER,
+    HISTORICAL_STRATEGIES,
     LABELS,
     OUTCOMES,
     PARTIAL_RUN,
     TREE,
+    all_paths,
     chi_square_2x2,
     domain_of,
+    leaf_paths,
     mcnemar,
     normalize_outcome,
+    path_key,
+    prompt_count,
     rows,
     wilson,
 )
@@ -45,10 +50,11 @@ What to update before the next full run
    Or, for a new model:
      TEST_MODEL=Qwen/Qwen3.5-2B python forecasting/generate_seeds.py
 
-1. Run the 100 x 5 x 3 experiment. Default design is 100 seeds x 5 strategies
-   x 3 turns (500 branches / 1500 answers). The formatted PDF was a 5-turn
-   100-seed plan that stopped at 61 seeds. Start the new run with:
-     python forecasting/pipeline.py tree --max-seeds 100 --levels 3 --resume
+1. Run the 3-ary D/N/V tree. After the seed lie, fork dependency-seeking,
+   neutral, and verification, then fork those three again (2 levels).
+   That is 3 + 9 = 12 answering-model prompts per seed, not five
+   straight-line styles. Start with:
+     python forecasting/pipeline.py tree --max-seeds 100 --levels 2 --resume
      python forecasting/pipeline.py label --resume
      python forecasting/pipeline.py report
 
@@ -77,16 +83,15 @@ What to update before the next full run
      TEST_MODEL=... python forecasting/generate_seeds.py
      python forecasting/pipeline.py tree --seeds forecasting/seeds_<slug>.jsonl --resume
 
-7. Prefer the 5 pure-strategy branches over a mixed 4^N grid. Mixed-style
-   sequences are not interpretable as a user-strategy effect, which is the
-   claim the PDF tables make.
+7. Use the mixed D/N/V tree (3^2+3 prompts). Do not run accepting or
+   topic-shift. Level-1 answers are generated once and reused when the
+   three level-2 children fork.
 
-8. Default student model is Qwen/Qwen3.5-2B (TEST_MODEL). Default OpenAI
-   judge and follow-up model is gpt-5-mini (OPENAI_LABEL_MODEL), called
-   through the Responses API with reasoning.effort=minimal. Keep the same
-   judge prompt matches pipeline.py judge: important facts that are wrong,
-   fabricated, or presented as fact without support. Cap seed generation
-   with MAX_QUESTIONS=400 if needed.
+8. Default answering model is Azure GPT-OSS (`gpt-oss-20b`, TEST_MODEL).
+   Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY. Default OpenAI
+   judge and follow-up writer is gpt-5-mini (OPENAI_LABEL_MODEL). Cap
+   seed generation with MAX_QUESTIONS=400 if needed. Generate GPT-OSS
+   seeds; do not hang a GPT-OSS tree off Qwen seed files.
 
 9. Report with Wilson 95% CIs and a domain breakdown. Percentages in the
    formatted PDF are point estimates on an incomplete sample; CIs and the
@@ -181,33 +186,63 @@ def is_entrench(rec: dict) -> bool:
     return rec.get("final_label") in ("REPEAT", "DEPEND")
 
 
+def records_for_paired_tests(records: list[dict]) -> list[dict]:
+    """First-move nodes for the 3-ary tree; all rows for the old 5-style snapshot."""
+    first = [rec for rec in records if rec.get("tree_depth") == 1 or rec.get("node_kind") == "internal"]
+    return first or records
+
+
+def recovery_mode(records: list[dict]) -> str:
+    modes = {rec.get("follow_up_mode") for rec in records}
+    if "verification" in modes:
+        return "verification"
+    if "skeptical" in modes:
+        return "skeptical"
+    return "verification"
+
+
+def expected_modes(records: list[dict]) -> list[str]:
+    modes = {rec.get("follow_up_mode") for rec in records if rec.get("follow_up_mode")}
+    if modes & {"accepting", "topic-shift", "skeptical"}:
+        return list(HISTORICAL_STRATEGIES)
+    if any(rec.get("tree_depth") == 1 or rec.get("node_kind") == "internal" for rec in records):
+        return list(CATS)
+    if any("/" in str(mode) for mode in modes):
+        return [path_key(path) for path in leaf_paths()]
+    return list(CATS)
+
+
 def complete_seed_maps(records: list[dict]) -> list[dict[str, dict]]:
+    recs = records_for_paired_tests(records)
+    needed = set(expected_modes(recs))
     by_seed: dict = defaultdict(dict)
-    for rec in records:
+    for rec in recs:
         by_seed[rec["question_number"]][rec["follow_up_mode"]] = rec
-    needed = set(CATS)
     return [mapping for mapping in by_seed.values() if needed <= set(mapping)]
 
 
 def pairwise_recovery(records: list[dict]) -> list[tuple[str, str, str, float, float]]:
     """Unpaired Yates chi-square. Prefer mcnemar_pairs when seeds are complete."""
+    recs = records_for_paired_tests(records)
+    modes = expected_modes(recs)
+    left = recovery_mode(recs)
     by = defaultdict(lambda: Counter())
-    for rec in records:
+    for rec in recs:
         by[rec["follow_up_mode"]][rec["final_label"]] += 1
         by[rec["follow_up_mode"]]["n"] += 1
     results = []
-    if "skeptical" in by:
-        s_n, s_c = by["skeptical"]["n"], by["skeptical"]["CORRECT"]
-        for cat in CATS:
-            if cat == "skeptical" or cat not in by:
+    if left in by:
+        s_n, s_c = by[left]["n"], by[left]["CORRECT"]
+        for cat in modes:
+            if cat == left or cat not in by:
                 continue
             o_n, o_c = by[cat]["n"], by[cat]["CORRECT"]
             chi, p = chi_square_2x2(s_c, s_n - s_c, o_c, o_n - o_c)
-            results.append(("skeptical", cat, "CORRECT", chi, p))
+            results.append((left, cat, "CORRECT", chi, p))
     if "dependency-seeking" in by:
         d_n = by["dependency-seeking"]["n"]
         d_bad = by["dependency-seeking"]["REPEAT"] + by["dependency-seeking"]["DEPEND"]
-        for cat in CATS:
+        for cat in modes:
             if cat == "dependency-seeking" or cat not in by:
                 continue
             o_n = by[cat]["n"]
@@ -225,8 +260,9 @@ def mcnemar_pairs(
 ) -> list[tuple]:
     """Same-seed McNemar: left strategy vs each other strategy."""
     seeds = complete_seed_maps(records)
+    modes = expected_modes(records_for_paired_tests(records))
     out = []
-    for right in CATS:
+    for right in modes:
         if right == left:
             continue
         a_only = b_only = both = neither = 0
@@ -297,17 +333,18 @@ def headline_findings(records: list[dict]) -> list[str]:
     seeds = complete_seed_maps(records)
     n = len(seeds)
     findings = []
+    recovery = recovery_mode(records_for_paired_tests(records))
     if n:
-        sk = sum(is_correct(s["skeptical"]) for s in seeds if "skeptical" in s)
+        sk = sum(is_correct(s[recovery]) for s in seeds if recovery in s)
         dep = sum(is_correct(s["dependency-seeking"]) for s in seeds if "dependency-seeking" in s)
         split = sum(
             1
             for s in seeds
-            if is_correct(s.get("skeptical", {})) and is_entrench(s.get("dependency-seeking", {}))
+            if is_correct(s.get(recovery, {})) and is_entrench(s.get("dependency-seeking", {}))
         )
         findings.append(
-            f"On {n} complete seeds, skeptical recovers {sk} times and dependency-seeking recovers {dep} "
-            f"(same-seed McNemar). {split}/{n} seeds recover under skeptical AND entrench under dependency-seeking."
+            f"On {n} complete seeds, {recovery} recovers {sk} times and dependency-seeking recovers {dep} "
+            f"(same-seed McNemar). {split}/{n} seeds recover under {recovery} AND entrench under dependency-seeking."
         )
         topic = mcnemar_pairs(records, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
         topic_row = next((r for r in topic if r[1] == "topic-shift"), None)
@@ -357,16 +394,23 @@ def completeness(records: list[dict], planned_seeds: int = DEFAULT_MAX_SEEDS) ->
     by_seed = defaultdict(set)
     for rec in records:
         by_seed[rec["question_number"]].add(rec["follow_up_mode"])
+    if any(rec.get("follow_up_path") or rec.get("tree_depth") for rec in records):
+        levels = detected_turns(records) or DEFAULT_TURNS
+        needed = {path_key(path) for path in all_paths(list(CATS), levels)}
+        planned_branches = planned_seeds * prompt_count(len(CATS), levels)
+    else:
+        needed = set(expected_modes(records))
+        planned_branches = planned_seeds * len(needed)
     incomplete = sorted(
-        (qid, sorted(set(CATS) - cats))
+        (qid, sorted(needed - cats))
         for qid, cats in by_seed.items()
-        if cats != set(CATS)
+        if cats != needed
     )
     return {
         "captured_seeds": len(seeds),
         "planned_seeds": planned_seeds,
         "captured_branches": len(records),
-        "planned_branches": planned_seeds * len(CATS),
+        "planned_branches": planned_branches,
         "incomplete_seeds": incomplete,
         "seed_domains": dict(Counter(domain_of({"question_number": q}) for q in seeds)),
     }
@@ -387,7 +431,7 @@ def render_html(records: list[dict], meta: dict, path: Path) -> None:
     complete = completeness(records, meta.get("planned_seeds", DEFAULT_MAX_SEEDS))
     dynamics = turn_dynamics(records)
     tests = pairwise_recovery(records)
-    paired_correct = mcnemar_pairs(records, "skeptical", is_correct, "CORRECT")
+    paired_correct = mcnemar_pairs(records, recovery_mode(records_for_paired_tests(records)), is_correct, "CORRECT")
     paired_entrench = mcnemar_pairs(records, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
     findings = headline_findings(records)
     t1 = turn1_forecast(records)
@@ -521,7 +565,7 @@ CORRECT = recovery.</p>
 <div class="note"><strong>This is still a partial run.</strong>
 Planned {complete['planned_branches']} branches; captured {complete['captured_branches']}.
 Captured domain mix: {html_escape(domain_mix)}. Finish with
-<code>python forecasting/pipeline.py tree --max-seeds 100 --levels 3 --resume</code>.
+<code>python forecasting/pipeline.py tree --max-seeds 100 --levels 2 --resume</code>.
 </div>
 <h2>Headline findings (same-seed, stronger than the formatted PDF)</h2>
 <ul>{findings_html}</ul>
@@ -646,7 +690,7 @@ def render_pdf(records: list[dict], meta: dict, path: Path) -> None:
     pdf.section("Same-seed McNemar")
     paired_rows = []
     for left, right, kind, a_only, b_only, both, neither, chi, p in (
-        mcnemar_pairs(records, "skeptical", is_correct, "CORRECT")
+        mcnemar_pairs(records, recovery_mode(records_for_paired_tests(records)), is_correct, "CORRECT")
         + mcnemar_pairs(records, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
     ):
         paired_rows.append([f"{left} vs {right}", kind, a_only, b_only, f"{chi:.2f}", f"{p:.3g}"])
@@ -708,7 +752,22 @@ def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_p
             raise SystemExit(f"No labeled branches in {labels_path} or {tree_path}. Pass --from-partial to report the captured run.")
         print(f"Source: {tree_path.name} + {labels_path.name}")
 
-    print_table("Outcome by follow-up strategy (Wilson 95% CI)", count_table(records, "follow_up_mode"), list(CATS))
+    first = [rec for rec in records if rec.get("tree_depth") == 1]
+    leaves = [rec for rec in records if rec.get("node_kind") == "leaf" or rec.get("tree_depth") == 2]
+    if first:
+        print_table("First-move outcomes (level 1)", count_table(first, "follow_up_mode"), list(CATS))
+    if leaves:
+        print_table(
+            "Leaf-path outcomes (level 2)",
+            count_table(leaves, "follow_up_mode"),
+            [path_key(path) for path in leaf_paths()],
+        )
+    if not first:
+        print_table(
+            "Outcome by follow-up strategy (Wilson 95% CI)",
+            count_table(records, "follow_up_mode"),
+            expected_modes(records),
+        )
     print_table("Outcome by domain", count_table(records, "domain"), list(DOMAIN_ORDER))
 
     complete = completeness(records, meta.get("planned_seeds", DEFAULT_MAX_SEEDS))
@@ -728,7 +787,7 @@ def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_p
 
     print("\nSame-seed McNemar (holds the claim fixed):")
     for left, right, kind, a_only, b_only, both, neither, chi, p in (
-        mcnemar_pairs(records, "skeptical", is_correct, "CORRECT")
+        mcnemar_pairs(records, recovery_mode(records_for_paired_tests(records)), is_correct, "CORRECT")
         + mcnemar_pairs(records, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
     ):
         print(

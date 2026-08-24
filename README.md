@@ -17,16 +17,16 @@ This checkout has two layers that share the same question files:
 | Layer | What it measures | Start here |
 |---|---|---|
 | **HalluHard benchmark** | How often a model invents facts in cited multi-turn chats (research, legal, medical, coding) | The rest of this README |
-| **Cascade experiment** | After the model has already made a false claim, what five different user styles do to that same lie over three turns | **[forecasting/README.md](forecasting/README.md)** |
+| **Cascade experiment** | After the model has already made a false claim, what a 3-way D/N/V follow-up tree does to that same lie | **[forecasting/README.md](forecasting/README.md)** |
 
-The published HalluHard paper is the first layer. The cascade code reuses those questions but runs a different protocol: freeze one seed lie, fork five pure user styles (dependency-seeking, neutral, skeptical, accepting, topic-shift), and label each turn `DROP` / `CORRECT` / `REPEAT` / `DEPEND`.
+The published HalluHard paper is the first layer. The cascade code reuses those questions but runs a different protocol: freeze one seed lie, fork **dependency-seeking / neutral / verification**, then fork each of those again (2 levels, **3 + 9 = 12** answering-model prompts per seed), and label each node `DROP` / `CORRECT` / `REPEAT` / `DEPEND`.
 
 ```
 research_questions/   legal_cases/   medical_guidelines/   coding/
     HalluHard tasks: generate conversations → judge claims → HTML report
 
 forecasting/
-    Cascade study: generate seeds → 5-style tree → outcome tables
+    Cascade study: generate seeds → D/N/V tree (3²+3) → outcome tables
 
 judging_pipeline/     tools/     report.py
     Shared claim judges, annotators, and the HalluHard HTML reporter
@@ -136,23 +136,26 @@ pixi run report \
 
 The cascade study lives under [`forecasting/`](forecasting/). Full walkthrough, labels, and file map: **[forecasting/README.md](forecasting/README.md)**.
 
-Default design: **100** domain-balanced hallucinating seeds × **5** pure user styles × **3** turns. Answering model `Qwen/Qwen3.5-2B` (thinking off). Judge and follow-up writer `gpt-5-mini`.
+Default design: **100** seeds, **2-level 3-ary tree** (D / N / V), **12** GPT-OSS answers per seed. Answering model `gpt-oss-20b` on Azure. Judge and follow-up writer `gpt-5-mini`.
 
 ```bash
 # No GPU: rebuild tables from the captured 61-seed snapshot
 pixi run forecast-report
 # or: python forecasting/pipeline.py report --from-partial
 
-# Full experiment (needs a local GPU or Apple MPS + OPENAI_API_KEY)
+export AZURE_OPENAI_ENDPOINT=...
+export AZURE_OPENAI_API_KEY=...
+export OPENAI_API_KEY=...   # judge / follow-up writer
+
 MAX_QUESTIONS=400 python forecasting/generate_seeds.py
 python forecasting/pipeline.py tree \
-  --seeds forecasting/seeds_qwen-qwen3.5-2b.jsonl \
-  --out forecasting/cascade_tree_100x3.jsonl \
-  --max-seeds 100 --levels 3 --resume
-python forecasting/pipeline.py report --tree forecasting/cascade_tree_100x3.jsonl
+  --seeds forecasting/seeds_gpt-oss-20b.jsonl \
+  --out forecasting/cascade_tree_dnv.jsonl \
+  --max-seeds 100 --levels 2 --resume
+python forecasting/pipeline.py report --tree forecasting/cascade_tree_dnv.jsonl
 ```
 
-`python maincode.py` maps HallucinationResearchTest env vars (`TEST_MODEL`, `MAX_EXAMPLES`, `INPUT_PATH`, `OUTPUT_PATH`, `NUM_TURNS`) onto `pipeline.py tree`. Do not mix a 4B seed file into a 2B tree. Do not mix follow-up styles inside one branch if you want a per-style table.
+`python maincode.py` maps HallucinationResearchTest env vars (`TEST_MODEL`, `MAX_EXAMPLES`, `INPUT_PATH`, `OUTPUT_PATH`, `NUM_TURNS`) onto `pipeline.py tree`. Generate GPT-OSS seeds before the tree; do not hang this tree off a Qwen seed file.
 
 ## Available Tasks
 

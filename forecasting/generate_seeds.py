@@ -145,8 +145,19 @@ def raw_step_logits(outputs):
 
 
 def generate_seed_answer(question: str, question_number: int, sample_index: int):
-    import torch
     import runtime
+
+    rng_seed = sample_seed_value(question_number, sample_index)
+    if runtime.uses_azure_answer(MODEL_NAME):
+        answer = runtime.answer_chat(
+            [{"role": "user", "content": question}],
+            max_new_tokens=SEED_MAX_NEW_TOKENS,
+            temperature=TEMPERATURE,
+            model_name=MODEL_NAME,
+        )
+        return strip_question_prefix(question, answer), {}, rng_seed
+
+    import torch
     from features import generation_features
     from runtime import init_model
 
@@ -156,7 +167,6 @@ def generate_seed_answer(question: str, question_number: int, sample_index: int)
     model_inputs = runtime.build_model_inputs(messages)
     model_inputs = {key: value.to(runtime.device) for key, value in model_inputs.items() if hasattr(value, "to")}
     input_length = model_inputs["input_ids"].shape[1]
-    rng_seed = sample_seed_value(question_number, sample_index)
     torch.manual_seed(rng_seed)
     sampling_kwargs = {"do_sample": True, "temperature": TEMPERATURE, "top_p": TOP_P}
     if TOP_K:
@@ -284,7 +294,7 @@ def main():
     if duplicate_count:
         print(f"Skipped {duplicate_count} duplicate answer(s).")
     print(f"Wrote {SEEDS_PATH}")
-    print(f"\nNext: python forecasting/pipeline.py tree --seeds {SEEDS_PATH} --max-seeds 100 --levels 3 --resume")
+    print(f"\nNext: python forecasting/pipeline.py tree --seeds {SEEDS_PATH} --max-seeds 100 --levels 2 --resume")
 
 
 if __name__ == "__main__":

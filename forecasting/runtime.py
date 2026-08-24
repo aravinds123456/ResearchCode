@@ -5,7 +5,14 @@ from __future__ import annotations
 import os
 import time
 
-from cascade import DEFAULT_OPENAI_JUDGE, ENABLE_THINKING, env_int, env_str, strip_thinking
+from cascade import (
+    DEFAULT_OPENAI_JUDGE,
+    DEFAULT_TEST_MODEL,
+    ENABLE_THINKING,
+    env_int,
+    env_str,
+    strip_thinking,
+)
 
 GEMINI_RETRIES = env_int("GEMINI_RETRIES", 5)
 MAX_NEW_TOKENS = env_int("MAX_NEW_TOKENS", 400)
@@ -144,7 +151,7 @@ def generate_response(messages, max_new_tokens: int | None = None) -> str:
 
 
 def load_qwen(name: str):
-    """Back-compat chat callable used by the cascade tree."""
+    """Local HuggingFace chat callable (Qwen and other HF models)."""
     init_model(name)
 
     def chat(messages):
@@ -152,6 +159,98 @@ def load_qwen(name: str):
 
     print(f"Loaded {name} on {device}")
     return chat
+
+
+def azure_credentials() -> tuple[str, str]:
+    endpoint = env_str("AZURE_OPENAI_ENDPOINT", env_str("AZURE_ENDPOINT", ""))
+    key = (
+        os.environ.get("AZURE_OPENAI_API_KEY")
+        or os.environ.get("AZURE_API_KEY")
+        or ""
+    ).strip()
+    return endpoint.rstrip("/"), key
+
+
+def uses_azure_answer(name: str) -> bool:
+    backend = env_str("ANSWER_BACKEND", "").lower()
+    if backend in {"azure", "azure-openai", "api"}:
+        return True
+    if backend in {"local", "hf", "huggingface", "qwen"}:
+        return False
+    lowered = (name or "").lower()
+    if "gpt-oss" in lowered or "gptoss" in lowered:
+        return True
+    endpoint, key = azure_credentials()
+    return bool(endpoint and key)
+
+
+def azure_deployment(name: str) -> str:
+    return env_str("AZURE_OPENAI_DEPLOYMENT", name)
+
+
+def make_azure_client():
+    from openai import AzureOpenAI, OpenAI
+
+    endpoint, key = azure_credentials()
+    if not endpoint or not key:
+        raise SystemExit(
+            "GPT-OSS on Azure needs AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY "
+            "(or AZURE_ENDPOINT / AZURE_API_KEY)."
+        )
+    if "/openai/v1" in endpoint or endpoint.endswith("/models"):
+        base = endpoint if endpoint.endswith("/") else f"{endpoint}/"
+        return OpenAI(base_url=base, api_key=key)
+    return AzureOpenAI(
+        azure_endpoint=endpoint,
+        api_key=key,
+        api_version=env_str("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
+    )
+
+
+def answer_chat(
+    messages,
+    max_new_tokens: int | None = None,
+    temperature: float = 0.0,
+    model_name: str | None = None,
+) -> str:
+    """One answering-model completion: Azure GPT-OSS or local HF."""
+    name = model_name or env_str("TEST_MODEL", DEFAULT_TEST_MODEL)
+    tokens = max_new_tokens or max(256, MAX_NEW_TOKENS // 2)
+    if not uses_azure_answer(name):
+        init_model(name)
+        return generate_response(messages, max_new_tokens=tokens)
+
+    client = make_azure_client()
+    deployment = azure_deployment(name)
+    kwargs = {"model": deployment, "messages": messages, "temperature": temperature}
+    try:
+        response = client.chat.completions.create(**kwargs, max_tokens=tokens)
+    except Exception as error:
+        if "max_token" not in str(error).lower() and "unsupported" not in str(error).lower():
+            raise
+        response = client.chat.completions.create(**kwargs, max_completion_tokens=tokens)
+    text = ""
+    if response.choices:
+        text = response.choices[0].message.content or ""
+    return strip_thinking(text)
+
+
+def load_answer_model(name: str):
+    """Chat callable for the cascade tree: Azure GPT-OSS by default."""
+    if uses_azure_answer(name):
+        endpoint, _ = azure_credentials()
+        print(f"Answer model: {azure_deployment(name)} via Azure ({endpoint or 'set AZURE_OPENAI_ENDPOINT'})")
+
+        def chat(messages):
+            return answer_chat(
+                messages,
+                max_new_tokens=max(256, MAX_NEW_TOKENS // 2),
+                temperature=0.0,
+                model_name=name,
+            )
+
+        return chat
+    return load_qwen(name)
 
 
 def _uses_responses_api(name: str) -> bool:

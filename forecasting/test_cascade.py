@@ -17,6 +17,8 @@ from cascade import (
     DEFAULT_TEST_MODEL,
     DEFAULT_TURNS,
     ENABLE_THINKING,
+    all_paths,
+    prompt_count,
     OUTCOMES,
     PARTIAL_RUN,
     backup,
@@ -77,14 +79,20 @@ class LabelTests(unittest.TestCase):
 
 
 class DesignDefaultTests(unittest.TestCase):
-    def test_default_run_is_hundred_seeds_and_three_turns(self):
+    def test_default_run_is_hundred_seeds_and_two_levels(self):
         self.assertEqual(DEFAULT_MAX_SEEDS, 100)
-        self.assertEqual(DEFAULT_TURNS, 3)
+        self.assertEqual(DEFAULT_TURNS, 2)
+        self.assertEqual(prompt_count(3, 2), 12)
+        self.assertEqual(len(all_paths(list(CATS), 2)), 12)
+        self.assertEqual(set(CATS), {"dependency-seeking", "neutral", "verification"})
 
-    def test_default_models_are_qwen35_2b_and_gpt5_mini(self):
-        self.assertEqual(DEFAULT_TEST_MODEL, "Qwen/Qwen3.5-2B")
+    def test_default_models_are_gptoss_and_gpt5_mini(self):
+        self.assertEqual(DEFAULT_TEST_MODEL, "gpt-oss-20b")
         self.assertEqual(DEFAULT_OPENAI_JUDGE, "gpt-5-mini")
         self.assertFalse(ENABLE_THINKING)
+        from runtime import uses_azure_answer
+        self.assertTrue(uses_azure_answer("gpt-oss-20b"))
+        self.assertTrue(uses_azure_answer("gptoss"))
         from runtime import _uses_responses_api
         self.assertTrue(_uses_responses_api("gpt-5-mini"))
         self.assertFalse(_uses_responses_api("gpt-4o-mini"))
@@ -203,7 +211,7 @@ class PartialRunTests(unittest.TestCase):
             self.assertTrue(html_path.exists())
             self.assertTrue(pdf_path.exists())
 
-    def test_dry_run_tree_writes_five_strategy_branches(self):
+    def test_dry_run_tree_writes_twelve_nodes_per_seed(self):
         import argparse
         from pipeline import cmd_tree
         with tempfile.TemporaryDirectory() as tmp:
@@ -212,30 +220,33 @@ class PartialRunTests(unittest.TestCase):
                 categories="all",
                 seeds=str(Path(__file__).resolve().parent / "batch_results.jsonl"),
                 max_seeds=2,
-                levels=3,
+                levels=2,
                 out=str(out),
                 resume=False,
                 dry_run=True,
-                model="Qwen/Qwen3.5-2B",
+                model="gpt-oss-20b",
             )
             cmd_tree(args)
             lines = [json.loads(line) for line in out.read_text().splitlines() if line.strip()]
-            self.assertEqual(len(lines), 10)
-            self.assertTrue(all(row["levels"] == 3 for row in lines))
-            self.assertEqual({row["follow_up_mode"] for row in lines}, set(CATS))
+            self.assertEqual(len(lines), 24)
+            self.assertTrue(all(row["levels"] == 2 for row in lines))
+            internals = [row for row in lines if row["node_kind"] == "internal"]
+            leaves = [row for row in lines if row["node_kind"] == "leaf"]
+            self.assertEqual(len(internals), 6)
+            self.assertEqual(len(leaves), 18)
+            self.assertTrue(any("/" in row["follow_up_mode"] for row in leaves))
             self.assertTrue(all(row["branch_outcome"] == "DROP" for row in lines))
             self.assertTrue(all(row.get("domain") in {"research", "legal", "medical"} for row in lines))
             self.assertTrue(all("turn_label_1" in row for row in lines))
-            self.assertTrue(all(row.get("enable_thinking") is False for row in lines))
+            self.assertTrue(all("turn_label_2" in row for row in leaves))
 
 
-class TopicShiftTests(unittest.TestCase):
-    def test_topic_shift_is_a_first_class_strategy(self):
-        self.assertIn("topic-shift", CATS)
-        self.assertEqual(
-            check("Setting that aside, what is the most common misconception here?", "topic-shift", ENTITIES),
-            "",
-        )
+class VerificationTests(unittest.TestCase):
+    def test_verification_is_the_recovery_move(self):
+        self.assertIn("verification", CATS)
+        self.assertNotIn("accepting", CATS)
+        self.assertNotIn("topic-shift", CATS)
+        self.assertEqual(check("Are you sure about that claim?", "verification", ENTITIES), "")
 
     def test_backup_still_satisfies_contracts(self):
         for cat in CATS:

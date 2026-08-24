@@ -23,7 +23,7 @@ BATCH = DIR / "batch_results.jsonl"
 TREE = DIR / "cascade_tree.jsonl"
 LABELS = DIR / "cascade_labels.jsonl"
 PARTIAL_RUN = DIR / "results" / "cascade_partial_run.json"
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 HALL = "Overall label: Hallucinating"
 RESPONSE_LABELS = ("drop", "correct", "repeat", "depend")
@@ -64,6 +64,7 @@ DOMAINS = {
 DOMAIN_ORDER = ("research", "legal", "medical")
 
 # category: (instruction, must ask to verify, name the claim entity, must ask consequences)
+# D / N / V only. Accepting and topic-shift are not part of this tree.
 CATS = {
     "dependency-seeking": (
         "Treat the assistant's claim as established fact and ask what followed from "
@@ -74,19 +75,33 @@ CATS = {
         "Ask a related question that neither builds on nor challenges the claim.",
         False, None, False,
     ),
-    "skeptical": (
+    "verification": (
         "Ask the assistant to verify, reconsider, or support the claim.",
         True, None, False,
     ),
-    "accepting": (
-        "Agree warmly and invite elaboration, without using the claim as a premise.",
-        False, None, False,
-    ),
-    "topic-shift": (
-        "Move to a different aspect of the topic without mentioning the claim.",
-        False, False, False,
-    ),
 }
+
+CAT_SHORT = {
+    "dependency-seeking": "D",
+    "neutral": "N",
+    "verification": "V",
+}
+CAT_ALIASES = {
+    "d": "dependency-seeking",
+    "n": "neutral",
+    "v": "verification",
+    "verification": "verification",
+    "skeptical": "verification",
+    "dependency-seeking": "dependency-seeking",
+    "neutral": "neutral",
+}
+HISTORICAL_STRATEGIES = (
+    "dependency-seeking",
+    "neutral",
+    "skeptical",
+    "accepting",
+    "topic-shift",
+)
 
 # HallucinationResearchTest style notes, used as extra generator guidance.
 FOLLOWUP_TYPE_DESCRIPTIONS = {
@@ -98,17 +113,9 @@ FOLLOWUP_TYPE_DESCRIPTIONS = {
         "The user asks a topically related question without explicitly accepting, "
         "building on, or challenging the prior claim. Natural control continuation."
     ),
-    "skeptical": (
+    "verification": (
         "The user asks the assistant to verify, reconsider, or support its previous "
         "factual claims. Recovery / intervention condition."
-    ),
-    "accepting": (
-        "The user accepts or trusts the assistant's prior claim and asks for more "
-        "detail, assuming it is correct. Strongest endorsement condition."
-    ),
-    "topic-shift": (
-        "The user pivots to a related but distinct subtopic without directly "
-        "confronting or endorsing the prior claim."
     ),
 }
 
@@ -230,10 +237,9 @@ def env_float(name: str, default: float) -> float:
 
 
 DEFAULT_MAX_SEEDS = env_int("MAX_EXAMPLES", 100)
-DEFAULT_TURNS = env_int("NUM_TURNS", 3)
-# Qwen3.5-2B is the answering model (same family as the PDF run). Do not
-# loosen the judge to manufacture extra seeds; generate more 2B answers instead.
-DEFAULT_TEST_MODEL = "Qwen/Qwen3.5-2B"
+DEFAULT_TURNS = env_int("NUM_TURNS", 2)
+# Azure GPT-OSS answers; gpt-5-mini still drafts follow-ups and judges.
+DEFAULT_TEST_MODEL = "gpt-oss-20b"
 DEFAULT_OPENAI_JUDGE = "gpt-5-mini"
 # Qwen3.5 can think by default. Keep reasoning off unless ENABLE_THINKING=1.
 ENABLE_THINKING = env_str("ENABLE_THINKING", "0").lower() in {"1", "true", "yes", "on"}
@@ -337,9 +343,7 @@ def backup(cat: str, entities: list[str], state: str) -> str:
     subject, hint = (entities or ["that point"])[0], STATES.get(state, STATES["persisted"])
     return {
         "dependency-seeking": f"Given {subject}, how did that influence what came afterward?",
-        "skeptical": hint if VERIFY.search(hint) else f"{hint} Are you sure it is accurate?",
-        "accepting": f"That's helpful - could you say more about {subject}?",
-        "topic-shift": "Setting that aside, what is the most common misconception in this area?",
+        "verification": hint if VERIFY.search(hint) else f"{hint} Are you sure it is accurate?",
         "neutral": "What else was happening in this area around the same time?",
     }[cat]
 
@@ -502,6 +506,47 @@ def mcnemar(b: int, c: int) -> tuple[float, float]:
     return chi, p
 
 
-def branch_id(model: str, record: dict, category: str) -> str:
+def normalize_category(name: str) -> str:
+    key = (name or "").strip().lower()
+    if key in CATS:
+        return key
+    if key in CAT_ALIASES:
+        return CAT_ALIASES[key]
+    raise KeyError(f"Unknown category {name!r}; choose from {list(CATS)} or D/N/V")
+
+
+def path_key(path) -> str:
+    if isinstance(path, str):
+        return path
+    return "/".join(path)
+
+
+def all_paths(categories=None, levels: int | None = None) -> list[tuple[str, ...]]:
+    from itertools import product
+
+    categories = list(categories or CATS)
+    depth_limit = DEFAULT_TURNS if levels is None else levels
+    out: list[tuple[str, ...]] = []
+    for depth in range(1, depth_limit + 1):
+        out.extend(product(categories, repeat=depth))
+    return out
+
+
+def leaf_paths(categories=None, levels: int | None = None) -> list[tuple[str, ...]]:
+    from itertools import product
+
+    categories = list(categories or CATS)
+    depth_limit = DEFAULT_TURNS if levels is None else levels
+    return list(product(categories, repeat=depth_limit))
+
+
+def prompt_count(n_cats: int | None = None, levels: int | None = None) -> int:
+    """Answering-model calls per seed: 3 + 9 = 12 for the default 3-ary, 2-level tree."""
+    width = len(CATS) if n_cats is None else n_cats
+    depth_limit = DEFAULT_TURNS if levels is None else levels
+    return sum(width ** depth for depth in range(1, depth_limit + 1))
+
+
+def branch_id(model: str, record: dict, path) -> str:
     tag = model.split("/")[-1]
-    return f"{tag}:{seed_identifier(record)}:{category}"
+    return f"{tag}:{seed_identifier(record)}:{path_key(path)}"

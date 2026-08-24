@@ -1,8 +1,8 @@
-"""Cascade pipeline: HalluHard 5-strategy tree + HallucinationResearchTest labels.
+"""Cascade pipeline: 3-ary D/N/V tree + HallucinationResearchTest labels.
 
   python forecasting/pipeline.py answer --domain all --resume
   python forecasting/pipeline.py judge  --domain all --resume
-  python forecasting/pipeline.py tree   --max-seeds 100 --levels 3 --resume
+  python forecasting/pipeline.py tree   --max-seeds 100 --levels 2 --resume
   python forecasting/pipeline.py label  --resume
   python forecasting/pipeline.py report --from-partial
   python forecasting/pipeline.py tree --dry-run --max-seeds 2
@@ -42,10 +42,14 @@ from cascade import (
     STATES,
     TREE,
     FOLLOWUP_TYPE_DESCRIPTIONS,
+    all_paths,
     backup,
     branch_id,
     check,
     derive_branch_outcome,
+    normalize_category,
+    path_key,
+    prompt_count,
     display_state,
     domain_of,
     env_str,
@@ -73,8 +77,8 @@ def gpt(prompt: str, as_json: bool = True):
     return _gpt(prompt, as_json=as_json)
 
 
-def load_qwen(name: str):
-    from runtime import load_qwen as _load
+def load_answer_model(name: str):
+    from runtime import load_answer_model as _load
     return _load(name)
 
 
@@ -177,12 +181,53 @@ def _maybe_features(args, question: str, answer: str) -> dict:
         return {}
 
 
-def cmd_tree(args) -> None:
-    """Step C: one pure-strategy branch per category, judged turn-by-turn."""
-    cats = list(CATS) if args.categories == "all" else args.categories.split(",")
-    if bad := [c for c in cats if c not in CATS]:
-        raise SystemExit(f"Unknown categories {bad}; choose from {list(CATS)}")
+def _resolve_categories(raw: str) -> list[str]:
+    if raw == "all":
+        return list(CATS)
+    cats = []
+    for part in raw.split(","):
+        try:
+            cats.append(normalize_category(part))
+        except KeyError as error:
+            raise SystemExit(str(error)) from error
+    return cats
 
+
+def _draft_follow_up(question, claim, messages, label, cat, entities, dry_run):
+    ask, why = backup(cat, entities, {
+        "correct": "corrected",
+        "repeat": "persisted",
+        "depend": "new_hallucination",
+        "drop": "not_applicable",
+    }.get(label, "persisted")), "dry-run" if dry_run else ""
+    if dry_run:
+        return ask, why
+    for _ in range(2):
+        drafted = str(gpt(P_DRAFT.format(
+            q=question[:1500], claim=claim, hist=history(messages),
+            state=label, hint=hint_for(label), cat=cat, rule=CATS[cat][0],
+            intent=FOLLOWUP_TYPE_DESCRIPTIONS[cat],
+        )).get("follow_up", "")).strip()
+        if not (why := check(drafted, cat, entities)):
+            return drafted, why
+    return ask, why
+
+
+def _messages_from_record(question: str, first: str, record: dict) -> list[dict]:
+    messages = [{"role": "user", "content": question}, {"role": "assistant", "content": first}]
+    for level in range(1, int(record.get("tree_depth") or record.get("levels") or 0) + 1):
+        ask = record.get(f"follow_up_{level}")
+        reply = record.get(f"future_turn_{level}")
+        if not ask or reply is None:
+            break
+        messages.append({"role": "user", "content": ask})
+        messages.append({"role": "assistant", "content": reply})
+    return messages
+
+
+def cmd_tree(args) -> None:
+    """Step C: full 3-ary D/N/V tree. Level 1 = 3 prompts, level 2 = 9 more (3^2+3)."""
+    cats = _resolve_categories(args.categories)
     raw_seeds = [
         r for r in rows(Path(args.seeds))
         if hallucinating(r) and not r.get("duplicate_answer")
@@ -192,15 +237,18 @@ def cmd_tree(args) -> None:
     seeds = sample_seeds(raw_seeds, args.max_seeds)
     plan = sampling_plan(raw_seeds, args.max_seeds)
     out = Path(args.out)
-    done = {r["branch_id"] for r in rows(out)} if args.resume else set()
+    existing = {r["branch_id"]: r for r in rows(out)} if args.resume else {}
+    done = set(existing)
     seen = bool(done)
     from runtime import active_judge_model
     judge_name = active_judge_model()
+    per_seed = prompt_count(len(cats), args.levels)
     print(
-        f"{len(seeds)} seeds x {len(cats)} categories x {args.levels} levels = "
-        f"{len(seeds) * len(cats)} branches, {len(seeds) * len(cats) * args.levels} answers"
+        f"{len(seeds)} seeds x {len(cats)}-way tree x {args.levels} levels = "
+        f"{per_seed} prompts/seed ({' + '.join(str(len(cats) ** d) for d in range(1, args.levels + 1))}), "
+        f"{len(seeds) * per_seed} answers"
     )
-    print(f"Answer model: {args.model} (thinking {'on' if ENABLE_THINKING else 'off'})")
+    print(f"Answer model: {args.model}")
     print(f"Judge model: {judge_name if not args.dry_run else 'dry-run'}")
     print(
         "Sampling: "
@@ -209,7 +257,7 @@ def cmd_tree(args) -> None:
             for domain in ("research", "legal", "medical", "total")
         )
     )
-    chat = (lambda m: f"[stub] {m[-1]['content'][:60]}") if args.dry_run else load_qwen(args.model)
+    chat = (lambda m: f"[stub] {m[-1]['content'][:60]}") if args.dry_run else load_answer_model(args.model)
 
     for index, seed in enumerate(seeds, 1):
         question = seed["question"]
@@ -217,93 +265,125 @@ def cmd_tree(args) -> None:
             question,
             first_present_field(seed, ("qwen_answer", "model_answer", "answer", "response"), "seed answer"),
         )
-        todo = [c for c in cats if branch_id(args.model, seed, c) not in done]
-        if not todo:
+        planned = [path_key(path) for path in all_paths(cats, args.levels)]
+        if all(branch_id(args.model, seed, path) in done for path in planned):
             continue
         text, entities = _extract_claim(question, first, args.dry_run)
         features = _maybe_features(args, question, first)
         print(f"\n[{index}/{len(seeds)}] q{seed['question_number']} ({domain_of(seed)}): {text[:90]}")
-        for cat in todo:
-            messages = [{"role": "user", "content": question}, {"role": "assistant", "content": first}]
-            label, record, turns = SEED_LABEL, {}, []
-            for level in range(1, args.levels + 1):
-                state_key = {
-                    "correct": "corrected",
-                    "repeat": "persisted",
-                    "depend": "new_hallucination",
-                    "drop": "not_applicable",
-                }.get(label, "persisted")
-                ask, why = backup(cat, entities, state_key), "dry-run" if args.dry_run else ""
-                if not args.dry_run:
-                    for _ in range(2):
-                        drafted = str(gpt(P_DRAFT.format(
-                            q=question[:1500], claim=text, hist=history(messages),
-                            state=label, hint=hint_for(label), cat=cat, rule=CATS[cat][0],
-                            intent=FOLLOWUP_TYPE_DESCRIPTIONS[cat],
-                        )).get("follow_up", "")).strip()
-                        if not (why := check(drafted, cat, entities)):
-                            ask = drafted
-                            break
-                messages.append({"role": "user", "content": ask})
-                reply = strip_thinking(chat(messages))
-                messages.append({"role": "assistant", "content": reply})
-                label, reason = _judge_turn(question, text, first, messages, reply, args.dry_run)
-                state = display_state(label)
-                record |= {
-                    f"follow_up_{level}": ask,
-                    f"future_turn_{level}": reply,
-                    f"turn_state_{level}": state,
-                    f"turn_label_{level}": label.upper(),
-                    f"turn_reason_{level}": reason,
-                    f"rejected_{level}": why,
-                }
-                turns.append({"turn": level, "label": label, "followup_type": cat, "state": state})
-            derived = derive_branch_outcome(turns)
-            bid = branch_id(args.model, seed, cat)
-            write(out, {
-                "schema_version": SCHEMA_VERSION,
-                "branch_id": bid,
-                "question_number": seed["question_number"],
-                "seed_id": seed_identifier(seed),
-                "sample_index": seed.get("sample_index"),
-                "domain": domain_of(seed),
-                "answer_model": args.model,
-                "judge_model_name": judge_name,
-                "enable_thinking": ENABLE_THINKING,
-                "follow_up_mode": cat,
-                "question": question,
-                "original_answer": first,
-                "false_claim": text,
-                "claim": text,
-                "entities": entities,
-                "levels": args.levels,
-                "branch_outcome": derived["branch_outcome"],
-                "final_label": derived["final_label"],
-                "label_counts": derived["label_counts"],
-                "first_depend_turn": derived["first_depend_turn"],
-                "first_correct_turn": derived["first_correct_turn"],
-                **features,
-                **record,
-            }, seen)
-            seen = True
-            done.add(bid)
-            print(
-                f"  {cat:<20} {[record[f'turn_state_{i}'] for i in range(1, args.levels + 1)]} "
-                f"-> {derived['branch_outcome']}"
-            )
-            if not args.dry_run:
-                write(LABELS, {
-                    "schema_version": SCHEMA_VERSION,
-                    "branch_id": bid,
-                    "question_number": seed["question_number"],
-                    "domain": domain_of(seed),
-                    "answer_model": args.model,
-                    "follow_up_mode": cat,
-                    "reason": "derived from per-turn DROP/CORRECT/REPEAT/DEPEND labels",
-                    "final_label": derived["final_label"],
-                    "derived_label": derived["branch_outcome"],
-                    "label_counts": derived["label_counts"],
-                }, Path(LABELS).exists() or seen)
+
+        by_path = {(): {
+            "messages": [{"role": "user", "content": question}, {"role": "assistant", "content": first}],
+            "label": SEED_LABEL,
+            "record": {},
+            "turns": [],
+        }}
+        for depth in range(1, args.levels + 1):
+            parents = [path for path in by_path if len(path) == depth - 1]
+            for parent_path in parents:
+                parent = by_path[parent_path]
+                for cat in cats:
+                    path = parent_path + (cat,)
+                    bid = branch_id(args.model, seed, path)
+                    if bid in existing:
+                        saved = existing[bid]
+                        turns = [
+                            {
+                                "turn": level,
+                                "label": parse_judge_label(str(saved.get(f"turn_label_{level}", "drop"))),
+                                "followup_type": (saved.get("follow_up_path") or path)[level - 1],
+                                "state": saved.get(f"turn_state_{level}", "not_applicable"),
+                            }
+                            for level in range(1, depth + 1)
+                            if saved.get(f"future_turn_{level}") is not None
+                        ]
+                        by_path[path] = {
+                            "messages": _messages_from_record(question, first, saved),
+                            "label": turns[-1]["label"] if turns else SEED_LABEL,
+                            "record": {
+                                key: saved[key]
+                                for key in saved
+                                if key.startswith(("follow_up_", "future_turn_", "turn_", "rejected_"))
+                            },
+                            "turns": turns,
+                        }
+                        continue
+                    ask, why = _draft_follow_up(
+                        question, text, parent["messages"], parent["label"], cat, entities, args.dry_run,
+                    )
+                    messages = parent["messages"] + [{"role": "user", "content": ask}]
+                    reply = strip_thinking(chat(messages))
+                    messages = messages + [{"role": "assistant", "content": reply}]
+                    label, reason = _judge_turn(question, text, first, messages, reply, args.dry_run)
+                    state = display_state(label)
+                    record = dict(parent["record"])
+                    record.update({
+                        f"follow_up_{depth}": ask,
+                        f"future_turn_{depth}": reply,
+                        f"turn_state_{depth}": state,
+                        f"turn_label_{depth}": label.upper(),
+                        f"turn_reason_{depth}": reason,
+                        f"rejected_{depth}": why,
+                    })
+                    turns = parent["turns"] + [{
+                        "turn": depth, "label": label, "followup_type": cat, "state": state,
+                    }]
+                    derived = derive_branch_outcome(turns)
+                    node = {
+                        "schema_version": SCHEMA_VERSION,
+                        "branch_id": bid,
+                        "question_number": seed["question_number"],
+                        "seed_id": seed_identifier(seed),
+                        "sample_index": seed.get("sample_index"),
+                        "domain": domain_of(seed),
+                        "answer_model": args.model,
+                        "judge_model_name": judge_name,
+                        "enable_thinking": ENABLE_THINKING,
+                        "follow_up_mode": path_key(path),
+                        "follow_up_path": list(path),
+                        "first_follow_up": path[0],
+                        "tree_depth": depth,
+                        "node_kind": "leaf" if depth == args.levels else "internal",
+                        "question": question,
+                        "original_answer": first,
+                        "false_claim": text,
+                        "claim": text,
+                        "entities": entities,
+                        "levels": args.levels,
+                        "branch_outcome": derived["branch_outcome"],
+                        "final_label": derived["final_label"],
+                        "label_counts": derived["label_counts"],
+                        "first_depend_turn": derived["first_depend_turn"],
+                        "first_correct_turn": derived["first_correct_turn"],
+                        **features,
+                        **record,
+                    }
+                    write(out, node, seen)
+                    seen = True
+                    done.add(bid)
+                    existing[bid] = node
+                    by_path[path] = {
+                        "messages": messages,
+                        "label": label,
+                        "record": record,
+                        "turns": turns,
+                    }
+                    if not args.dry_run:
+                        write(LABELS, {
+                            "schema_version": SCHEMA_VERSION,
+                            "branch_id": bid,
+                            "question_number": seed["question_number"],
+                            "domain": domain_of(seed),
+                            "answer_model": args.model,
+                            "follow_up_mode": path_key(path),
+                            "follow_up_path": list(path),
+                            "tree_depth": depth,
+                            "reason": "derived from per-turn DROP/CORRECT/REPEAT/DEPEND labels",
+                            "final_label": derived["final_label"],
+                            "derived_label": derived["branch_outcome"],
+                            "label_counts": derived["label_counts"],
+                        }, Path(LABELS).exists() or seen)
+                    print(f"  {path_key(path):<40} {state} -> {derived['branch_outcome']}")
     print(f"\n-> {out}")
 
 
