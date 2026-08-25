@@ -54,10 +54,10 @@ Judge labels are parsed **strictly** (`Overall label: DEPEND`, JSON `"label"`, o
 
 ## Default run
 
-- **100** hallucinating seeds × **12** prompts = **1200** GPT-OSS answers
+- **100** seeds × **12** prompts = **1200** GPT-OSS answers (50 Hallucinating / 50 Not Hallucinating, and 50 research / 50 legal+medical)
 - Answering model: `gpt-oss-20b` on Azure (`TEST_MODEL`, `AZURE_OPENAI_*`)
 - Judge and follow-up writer: `gpt-5-mini` (`OPENAI_LABEL_MODEL`)
-- Seeds are sampled round-robin across research / legal / medical
+- Seeds are sampled **50/50 Hallucinating vs Not Hallucinating** and **50/50 research vs legal/medical** (legal and medical share the non-research half).
 
 Teacher-forced token features are skipped on the Azure path (no local logits).
 

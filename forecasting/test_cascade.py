@@ -176,17 +176,66 @@ class DesignDefaultTests(unittest.TestCase):
 
 
 class SamplingTests(unittest.TestCase):
-    def test_round_robin_stays_balanced_when_truncated(self):
+    def _labeled(self, qid, domain, hall):
+        return {
+            "question_number": qid,
+            "domain": domain,
+            "gemini_judgement": (
+                "Overall label: Hallucinating" if hall else "Overall label: Not Hallucinating"
+            ),
+        }
+
+    def test_hundred_seeds_split_50_50_hall_and_research_vs_other(self):
+        seeds = []
+        qid = 0
+        for hall in (True, False):
+            for domain, start in (("research", 0), ("legal", 100000), ("medical", 200000)):
+                for i in range(40):
+                    seeds.append(self._labeled(start + qid, domain, hall))
+                    qid += 1
+        taken = sample_seeds(seeds, 100)
+        self.assertEqual(len(taken), 100)
+        hall_n = sum(1 for s in taken if s["gemini_judgement"].startswith("Overall label: Hallucinating"))
+        research_n = sum(1 for s in taken if domain_of(s) == "research")
+        other_n = sum(1 for s in taken if domain_of(s) in {"legal", "medical"})
+        legal_n = sum(1 for s in taken if domain_of(s) == "legal")
+        medical_n = sum(1 for s in taken if domain_of(s) == "medical")
+        self.assertEqual(hall_n, 50)
+        self.assertEqual(research_n, 50)
+        self.assertEqual(other_n, 50)
+        self.assertGreaterEqual(legal_n, 20)
+        self.assertGreaterEqual(medical_n, 20)
+
+    def test_ten_seeds_stay_balanced_on_both_axes(self):
+        seeds = []
+        qid = 0
+        for hall in (True, False):
+            for domain, start in (("research", 0), ("legal", 100000), ("medical", 200000)):
+                for i in range(10):
+                    seeds.append(self._labeled(start + qid, domain, hall))
+                    qid += 1
+        taken = sample_seeds(seeds, 10)
+        hall_n = sum(1 for s in taken if s["gemini_judgement"].startswith("Overall label: Hallucinating"))
+        research_n = sum(1 for s in taken if domain_of(s) == "research")
+        self.assertEqual(hall_n, 5)
+        self.assertEqual(research_n, 5)
+
+    def test_fills_when_one_cell_is_short(self):
         seeds = (
-            [{"question_number": i, "domain": "research"} for i in range(40)]
-            + [{"question_number": 100000 + i, "domain": "legal"} for i in range(40)]
-            + [{"question_number": 200000 + i, "domain": "medical"} for i in range(40)]
+            [self._labeled(i, "research", True) for i in range(5)]
+            + [self._labeled(100000 + i, "legal", True) for i in range(40)]
+            + [self._labeled(200000 + i, "medical", False) for i in range(40)]
+            + [self._labeled(50 + i, "research", False) for i in range(40)]
         )
-        taken = sample_seeds(seeds, 30)
-        counts = {d: 0 for d in ("research", "legal", "medical")}
-        for seed in taken:
-            counts[domain_of(seed)] += 1
-        self.assertEqual(counts, {"research": 10, "legal": 10, "medical": 10})
+        taken = sample_seeds(seeds, 100)
+        self.assertEqual(len(taken), 100)
+        hall_n = sum(1 for s in taken if s["gemini_judgement"].startswith("Overall label: Hallucinating"))
+        research_n = sum(1 for s in taken if domain_of(s) == "research")
+        self.assertEqual(hall_n, 45)
+        self.assertGreaterEqual(research_n, 30)
+        self.assertLessEqual(research_n, 50)
+        self.assertTrue(any(domain_of(s) == "legal" for s in taken))
+        self.assertTrue(any(domain_of(s) == "medical" for s in taken))
 
     def test_domain_from_halluhard_id_offsets(self):
         self.assertEqual(domain_of({"question_number": 89}), "research")
@@ -194,10 +243,11 @@ class SamplingTests(unittest.TestCase):
         self.assertEqual(domain_of({"question_number": 200151}), "medical")
 
     def test_sampling_plan_matches_requested_n(self):
-        seeds = [{"question_number": i, "domain": "research"} for i in range(10)]
+        seeds = [self._labeled(i, "research", True) for i in range(10)]
         plan = sampling_plan(seeds, 4)
         self.assertEqual(plan["total"]["selected"], 4)
         self.assertEqual(plan["research"]["available"], 10)
+        self.assertEqual(plan["hallucinating"]["available"], 10)
 
 
 class CleaningTests(unittest.TestCase):
@@ -299,6 +349,8 @@ class PartialRunTests(unittest.TestCase):
                 resume=False,
                 dry_run=True,
                 model="gpt-oss-20b",
+                pilot=False,
+                skip_pilot=True,
             )
             cmd_tree(args)
             lines = [json.loads(line) for line in out.read_text().splitlines() if line.strip()]
@@ -316,6 +368,8 @@ class PartialRunTests(unittest.TestCase):
             self.assertTrue(all("turn_label_2" in row for row in leaves))
             self.assertTrue(all(row.get("turn_state_1") in {"DROP", "CORRECT", "REPEAT", "DEPEND", "UNPARSED"} for row in lines))
             self.assertFalse(any("persisted_active" in json.dumps(row) or "persisted_dormant" in json.dumps(row) for row in lines))
+            self.assertTrue(all(row.get("seed_class") in {"hallucinating", "not_hallucinating"} for row in lines))
+            self.assertTrue(all(row.get("domain_group") in {"research", "other"} for row in lines))
             self.assertTrue(all(row.get("prompt_pack_version") == 2 for row in lines))
             self.assertTrue(all("seed_judge.v4" in row.get("prompt_ids", {}).values() for row in lines))
 

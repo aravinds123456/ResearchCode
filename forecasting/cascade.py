@@ -27,7 +27,7 @@ BATCH = DIR / "batch_results.jsonl"
 TREE = DIR / "cascade_tree.jsonl"
 LABELS = DIR / "cascade_labels.jsonl"
 PARTIAL_RUN = DIR / "results" / "cascade_partial_run.json"
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 HALL = "Overall label: Hallucinating"
 RESPONSE_LABELS = ("drop", "correct", "repeat", "depend")
@@ -66,6 +66,16 @@ DOMAINS = {
     "medical": (ROOT / "medical_guidelines/data/guidelines.jsonl", "question", 200_000),
 }
 DOMAIN_ORDER = ("research", "legal", "medical")
+OTHER_DOMAINS = ("legal", "medical")
+SEED_CLASSES = ("hallucinating", "not_hallucinating")
+DOMAIN_GROUPS = ("research", "other")
+# Alternate hall/clean and research/other so n=100 is 50/50 on both axes.
+SAMPLE_CELL_ORDER = (
+    ("hallucinating", "research"),
+    ("not_hallucinating", "other"),
+    ("hallucinating", "other"),
+    ("not_hallucinating", "research"),
+)
 
 # category: (instruction, must ask to verify, name the claim entity, must ask consequences)
 # D / N / V only. Accepting and topic-shift are not part of this tree.
@@ -424,50 +434,131 @@ def derive_branch_outcome(turns: list[dict]) -> dict:
     }
 
 
+def judged_seed(record: dict) -> bool:
+    for field in JUDGMENT_FIELDS:
+        if str(record.get(field) or "").strip():
+            return True
+    return False
+
+
+def seed_class(record: dict) -> str:
+    stored = record.get("seed_class")
+    if stored in SEED_CLASSES:
+        return stored
+    if "seed_hallucinating" in record:
+        return "hallucinating" if record.get("seed_hallucinating") else "not_hallucinating"
+    if not judged_seed(record):
+        return "unknown"
+    return "hallucinating" if hallucinating(record) else "not_hallucinating"
+
+
+def domain_group(record: dict) -> str:
+    stored = record.get("domain_group")
+    if stored in DOMAIN_GROUPS:
+        return stored
+    return "research" if domain_of(record) == "research" else "other"
+
+
+def _plan_row(take: int, have: int) -> dict:
+    return {
+        "selected": take,
+        "available": have,
+        "selection_rate": round(100 * take / have, 1) if have else 0.0,
+    }
+
+
 def sample_seeds(seeds: list[dict], n: int, rng_seed: int = 42) -> list[dict]:
-    """Round-robin across domains so a stopped run stays balanced."""
+    """50/50 Hallucinating vs Not Hallucinating, and 50/50 research vs legal/medical."""
     rng = random.Random(rng_seed)
-    by_domain: dict[str, list[dict]] = defaultdict(list)
+    buckets: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for seed in seeds:
-        by_domain[domain_of(seed)].append(seed)
-    for bucket in by_domain.values():
+        buckets[(seed_class(seed), domain_of(seed))].append(seed)
+    for bucket in buckets.values():
         rng.shuffle(bucket)
 
+    cursors: dict[tuple[str, str], int] = defaultdict(int)
+    group_rr: dict[tuple[str, str], int] = defaultdict(int)
+
+    def take(cls: str, group: str) -> dict | None:
+        domains = ("research",) if group == "research" else OTHER_DOMAINS
+        for _ in range(len(domains)):
+            domain = domains[group_rr[(cls, group)] % len(domains)]
+            group_rr[(cls, group)] += 1
+            key = (cls, domain)
+            index = cursors[key]
+            bucket = buckets.get(key, [])
+            if index < len(bucket):
+                cursors[key] = index + 1
+                return bucket[index]
+        return None
+
+    def take_any() -> dict | None:
+        for cls in SEED_CLASSES:
+            for domain in DOMAIN_ORDER:
+                key = (cls, domain)
+                index = cursors[key]
+                bucket = buckets.get(key, [])
+                if index < len(bucket):
+                    cursors[key] = index + 1
+                    return bucket[index]
+        return None
+
     selected: list[dict] = []
-    index = {domain: 0 for domain in DOMAIN_ORDER}
+    quota: dict[tuple[str, str], int] = defaultdict(int)
+    for i in range(n):
+        quota[SAMPLE_CELL_ORDER[i % 4]] += 1
+    for cell, want in quota.items():
+        for _ in range(want):
+            item = take(*cell)
+            if item is None:
+                break
+            selected.append(item)
+
+    hall_target = n // 2
+    research_target = n // 2
     while len(selected) < n:
-        progressed = False
-        for domain in DOMAIN_ORDER:
-            cursor = index[domain]
-            bucket = by_domain.get(domain, [])
-            if cursor < len(bucket):
-                selected.append(bucket[cursor])
-                index[domain] = cursor + 1
-                progressed = True
-                if len(selected) >= n:
-                    break
-        if not progressed:
+        hall_n = sum(1 for seed in selected if seed_class(seed) == "hallucinating")
+        research_n = sum(1 for seed in selected if domain_group(seed) == "research")
+        want_hall = "hallucinating" if hall_n < hall_target else "not_hallucinating"
+        want_group = "research" if research_n < research_target else "other"
+        item = None
+        for cls, group in (
+            (want_hall, want_group),
+            (want_hall, "other" if want_group == "research" else "research"),
+            ("not_hallucinating" if want_hall == "hallucinating" else "hallucinating", want_group),
+            (
+                "not_hallucinating" if want_hall == "hallucinating" else "hallucinating",
+                "other" if want_group == "research" else "research",
+            ),
+        ):
+            item = take(cls, group)
+            if item is not None:
+                break
+        if item is None:
+            item = take_any()
+        if item is None:
             break
+        selected.append(item)
     return selected
 
 
 def sampling_plan(seeds: list[dict], n: int = 100) -> dict:
-    available = Counter(domain_of(s) for s in seeds)
-    chosen = Counter(domain_of(s) for s in sample_seeds(seeds, n))
+    taken = sample_seeds(seeds, n)
+    available_domain = Counter(domain_of(s) for s in seeds)
+    chosen_domain = Counter(domain_of(s) for s in taken)
+    available_class = Counter(seed_class(s) for s in seeds)
+    chosen_class = Counter(seed_class(s) for s in taken)
+    available_group = Counter(domain_group(s) for s in seeds)
+    chosen_group = Counter(domain_group(s) for s in taken)
     rows = {}
     for domain in DOMAIN_ORDER:
-        have, take = available[domain], chosen[domain]
-        rows[domain] = {
-            "selected": take,
-            "available": have,
-            "selection_rate": round(100 * take / have, 1) if have else 0.0,
-        }
-    total_have, total_take = sum(available.values()), sum(chosen.values())
-    rows["total"] = {
-        "selected": total_take,
-        "available": total_have,
-        "selection_rate": round(100 * total_take / total_have, 1) if total_have else 0.0,
-    }
+        rows[domain] = _plan_row(chosen_domain[domain], available_domain[domain])
+    for cls in SEED_CLASSES:
+        rows[cls] = _plan_row(chosen_class[cls], available_class[cls])
+    for group in DOMAIN_GROUPS:
+        rows[group] = _plan_row(chosen_group[group], available_group[group])
+    total_have, total_take = len(seeds), len(taken)
+    rows["total"] = _plan_row(total_take, total_have)
     return rows
 
 

@@ -20,6 +20,12 @@
       "role": "Extract the seed false claim",
       "text": "Identify the ONE false factual claim that a later conversation would most likely build upon.\nQUESTION: {q}\nANSWER (already judged to contain at least one hallucination): {a}\nState it as a single self-contained proposition, including the specific entities, numbers, or dates involved.\nReturn JSON: {{\"claim\": \"the false proposition as stated\", \"entities\": [\"2-4 names, terms, dates or numbers from it\"]}}"
     },
+    "claim_control": {
+      "id": "p_claim_control.v1",
+      "version": 1,
+      "role": "Extract the main seed claim from a non-hallucinating answer",
+      "text": "Identify the ONE main factual claim in this answer that a later conversation would most likely refer back to.\nQUESTION: {q}\nANSWER (already judged not hallucinating; do not invent a falsehood): {a}\nState it as a single self-contained proposition, including the specific entities, numbers, or dates involved.\nReturn JSON: {{\"claim\": \"the proposition as stated\", \"entities\": [\"2-4 names, terms, dates or numbers from it\"]}}"
+    },
     "draft_follow_up": {
       "id": "p_draft.v1",
       "version": 1,

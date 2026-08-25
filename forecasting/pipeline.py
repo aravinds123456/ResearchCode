@@ -46,11 +46,14 @@ from cascade import (
     path_key,
     prompt_count,
     display_state,
+    domain_group,
     domain_of,
     env_str,
     first_present_field,
     hallucinating,
     hint_for,
+    judged_seed,
+    seed_class,
     history,
     names,
     normalize_outcome,
@@ -144,10 +147,13 @@ def cmd_judge(args) -> None:
     print(f"{sum(1 for r in merged.values() if r['gemini_judgement'].startswith(HALL))}/{len(merged)} hallucinating")
 
 
-def _extract_claim(question: str, answer: str, dry_run: bool) -> tuple[str, list[str]]:
+def _extract_claim(
+    question: str, answer: str, dry_run: bool, *, hallucinated: bool = True,
+) -> tuple[str, list[str]]:
     if dry_run:
         return answer[:200], []
-    claim = gpt(fill_prompt("claim", q=question[:1500], a=answer[:3000]))
+    prompt_name = "claim" if hallucinated else "claim_control"
+    claim = gpt(fill_prompt(prompt_name, q=question[:1500], a=answer[:3000]))
     text = strip_thinking(str(claim.get("claim", "")))[:800]
     entities = [str(e) for e in claim.get("entities", [])][:4]
     return text, entities
@@ -263,10 +269,10 @@ def cmd_tree(args) -> None:
     cats = _resolve_categories(args.categories)
     raw_seeds = [
         r for r in rows(Path(args.seeds))
-        if hallucinating(r) and not r.get("duplicate_answer")
+        if judged_seed(r) and not r.get("duplicate_answer")
     ]
     if not raw_seeds:
-        raise SystemExit(f"No hallucinating rows in {args.seeds}")
+        raise SystemExit(f"No judged seed rows in {args.seeds}")
     seeds = sample_seeds(raw_seeds, args.max_seeds)
     plan = sampling_plan(raw_seeds, args.max_seeds)
     out = Path(args.out)
@@ -286,10 +292,19 @@ def cmd_tree(args) -> None:
     print(f"Prompt pack: v{prompt_pack_version()} ids={prompt_ids()}")
     print("Workflow: debug prompts on ~10 examples (--pilot), then scale. Do not send 100+ first.")
     print(
-        "Sampling: "
+        "Sampling 50/50 hall vs not, 50/50 research vs legal/medical: "
         + ", ".join(
-            f"{domain} {plan[domain]['selected']}/{plan[domain]['available']}"
-            for domain in ("research", "legal", "medical", "total")
+            f"{name} {plan[name]['selected']}/{plan[name]['available']}"
+            for name in (
+                "hallucinating",
+                "not_hallucinating",
+                "research",
+                "other",
+                "legal",
+                "medical",
+                "total",
+            )
+            if name in plan
         )
     )
     log_experiment(
@@ -311,9 +326,13 @@ def cmd_tree(args) -> None:
         planned = [path_key(path) for path in all_paths(cats, args.levels)]
         if all(branch_id(args.model, seed, path) in done for path in planned):
             continue
-        text, entities = _extract_claim(question, first, args.dry_run)
+        is_hall = hallucinating(seed)
+        text, entities = _extract_claim(question, first, args.dry_run, hallucinated=is_hall)
         features = _maybe_features(args, question, first)
-        print(f"\n[{index}/{len(seeds)}] q{seed['question_number']} ({domain_of(seed)}): {text[:90]}")
+        print(
+            f"\n[{index}/{len(seeds)}] q{seed['question_number']} "
+            f"({domain_of(seed)}/{seed_class(seed)}): {text[:90]}"
+        )
 
         by_path = {(): {
             "messages": [{"role": "user", "content": question}, {"role": "assistant", "content": first}],
@@ -399,6 +418,9 @@ def cmd_tree(args) -> None:
                         "original_answer": first,
                         "false_claim": text,
                         "claim": text,
+                        "seed_hallucinating": is_hall,
+                        "seed_class": seed_class(seed),
+                        "domain_group": domain_group(seed),
                         "entities": entities,
                         "levels": args.levels,
                         "branch_outcome": derived["branch_outcome"],

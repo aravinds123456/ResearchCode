@@ -20,15 +20,18 @@ from cascade import (
     CATS,
     DEFAULT_MAX_SEEDS,
     DEFAULT_TURNS,
+    DOMAIN_GROUPS,
     DOMAIN_ORDER,
     HISTORICAL_STRATEGIES,
     LABELS,
     OUTCOMES,
     PARTIAL_RUN,
+    SEED_CLASSES,
     TREE,
     all_paths,
     canonical_turn_state,
     chi_square_2x2,
+    domain_group,
     domain_of,
     leaf_paths,
     mcnemar,
@@ -36,6 +39,7 @@ from cascade import (
     path_key,
     prompt_count,
     rows,
+    seed_class,
     wilson,
 )
 
@@ -67,7 +71,7 @@ reasoning."
 
 What else to keep
 =================
-- Round-robin domain sampling so a stopped run stays balanced.
+- 50/50 Hallucinating vs Not Hallucinating, and 50/50 research vs legal/medical.
 - Derive branch outcomes from DROP/CORRECT/REPEAT/DEPEND; do not mix vocabularies.
 - Generate seeds with the model under test (GPT-OSS seeds for a GPT-OSS tree).
 - Wilson 95% CIs and the domain split; the formatted PDF was an incomplete sample.
@@ -106,6 +110,8 @@ def records_from_partial(data: dict) -> list[dict]:
                 "seed_index": seed["seed_index"],
                 "levels": len(branch["turns"]),
             }
+            rec["seed_class"] = seed_class(rec)
+            rec["domain_group"] = domain_group(rec)
             for i, state in enumerate(branch["turns"], start=1):
                 rec[f"turn_state_{i}"] = state
             out.append(with_canonical_turn_states(rec))
@@ -128,6 +134,8 @@ def records_from_live(tree_path: Path, labels_path: Path) -> list[dict]:
         rec = dict(row)
         rec["final_label"] = outcome
         rec["domain"] = rec.get("domain") or domain_of(rec)
+        rec["seed_class"] = rec.get("seed_class") or seed_class(rec)
+        rec["domain_group"] = rec.get("domain_group") or domain_group(rec)
         if label_row.get("judge_parse_status"):
             rec["judge_parse_status"] = label_row["judge_parse_status"]
         out.append(with_canonical_turn_states(rec))
@@ -423,6 +431,8 @@ def render_html(records: list[dict], meta: dict, path: Path) -> None:
     scored = parsable_records(records)
     by_cat = count_table(scored, "follow_up_mode")
     by_dom = count_table(scored, "domain")
+    by_class = count_table(scored, "seed_class")
+    by_group = count_table(scored, "domain_group")
     n_turns = detected_turns(records)
     complete = completeness(records, meta.get("planned_seeds", DEFAULT_MAX_SEEDS))
     dynamics = turn_dynamics(records)
@@ -571,6 +581,10 @@ Do not cherry-pick. Do not overclaim.
 {table_html(by_cat, list(CATS))}
 <h2>By domain</h2>
 {table_html(by_dom, list(DOMAIN_ORDER))}
+<h2>By seed class (Hallucinating vs Not Hallucinating)</h2>
+{table_html(by_class, list(SEED_CLASSES))}
+<h2>By domain group (research vs legal/medical)</h2>
+{table_html(by_group, list(DOMAIN_GROUPS))}
 <h2>CORRECT rate by strategy and domain</h2>
 <table><thead><tr><th>strategy</th><th>research</th><th>legal</th><th>medical</th></tr></thead>
 <tbody>{sx_html}</tbody></table>
@@ -613,6 +627,8 @@ def render_pdf(records: list[dict], meta: dict, path: Path) -> None:
 
     by_cat = count_table(records, "follow_up_mode")
     by_dom = count_table(records, "domain")
+    by_class = count_table(records, "seed_class")
+    by_group = count_table(records, "domain_group")
     complete = completeness(records, meta.get("planned_seeds", DEFAULT_MAX_SEEDS))
 
     class PDF(FPDF):
@@ -684,6 +700,28 @@ def render_pdf(records: list[dict], meta: dict, path: Path) -> None:
         n = counts["n"]
         data.append([domain, n, *[fmt_cell(counts[o], n) for o in OUTCOMES]])
     pdf.table(["domain", "n", *OUTCOMES], data, [28, 10, 38, 38, 38, 38])
+
+    pdf.section("By seed class")
+    data = []
+    for key in SEED_CLASSES:
+        if key not in by_class:
+            continue
+        counts = by_class[key]
+        n = counts["n"]
+        data.append([key, n, *[fmt_cell(counts[o], n) for o in OUTCOMES]])
+    if data:
+        pdf.table(["seed class", "n", *OUTCOMES], data, [40, 10, 36, 36, 36, 36])
+
+    pdf.section("By domain group")
+    data = []
+    for key in DOMAIN_GROUPS:
+        if key not in by_group:
+            continue
+        counts = by_group[key]
+        n = counts["n"]
+        data.append([key, n, *[fmt_cell(counts[o], n) for o in OUTCOMES]])
+    if data:
+        pdf.table(["domain group", "n", *OUTCOMES], data, [40, 10, 36, 36, 36, 36])
 
     pdf.section("Same-seed McNemar")
     paired_rows = []
@@ -772,6 +810,8 @@ def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_p
             expected_modes(scored),
         )
     print_table("Outcome by domain", count_table(scored, "domain"), list(DOMAIN_ORDER))
+    print_table("Outcome by seed class", count_table(scored, "seed_class"), list(SEED_CLASSES))
+    print_table("Outcome by domain group", count_table(scored, "domain_group"), list(DOMAIN_GROUPS))
 
     complete = completeness(records, meta.get("planned_seeds", DEFAULT_MAX_SEEDS))
     print(
