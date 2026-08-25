@@ -383,6 +383,21 @@ class JudgeRetryTests(unittest.TestCase):
         self.assertEqual(status, "retried")
 
 
+class AzureDeploymentTests(unittest.TestCase):
+    def test_deployment_missing_message_is_not_a_second_key(self):
+        from runtime import deployment_missing_message, is_deployment_missing
+
+        class Fake(Exception):
+            body = {"error": {"code": "DeploymentNotFound", "message": "missing"}}
+
+        self.assertTrue(is_deployment_missing(Fake("DeploymentNotFound")))
+        text = deployment_missing_message("gpt-oss-20b", found=["gpt-oss-120b", "my-oss"])
+        self.assertIn("gpt-oss-20b", text)
+        self.assertIn("AZURE_OPENAI_DEPLOYMENT", text)
+        self.assertIn("gpt-oss-120b", text)
+        self.assertIn("not a missing second API key", text)
+
+
 class AlgoverseWorkflowTests(unittest.TestCase):
     def test_prompts_are_loaded_from_versioned_json(self):
         from prompts_pack import fill_prompt, prompt_ids, prompt_pack_version, prompt_text

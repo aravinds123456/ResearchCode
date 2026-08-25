@@ -205,9 +205,17 @@ def main():
         for sample_index in range(SAMPLES_PER_QUESTION)
         if (number, sample_index) not in processed_samples
     ]
-    from runtime import active_judge_model, judge_backend, setup_gemini
+    from runtime import (
+        active_judge_model,
+        azure_deployment,
+        judge_backend,
+        setup_gemini,
+        uses_azure_answer,
+    )
 
     print(f"Test model: {MODEL_NAME}")
+    if uses_azure_answer(MODEL_NAME):
+        print(f"Azure deployment: {azure_deployment(MODEL_NAME)} (override with AZURE_OPENAI_DEPLOYMENT)")
     print(f"Judge model: {active_judge_model()}")
     print(f"Thinking: {'on' if ENABLE_THINKING else 'off'}")
     print(f"Prompt pack: v{prompt_pack_version()} ids={prompt_ids()}")

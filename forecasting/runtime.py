@@ -188,6 +188,56 @@ def azure_deployment(name: str) -> str:
     return env_str("AZURE_OPENAI_DEPLOYMENT", name)
 
 
+def list_azure_deployments() -> list[str]:
+    """Names shown in Azure Portal → Deployments for this resource."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    endpoint, key = azure_credentials()
+    if not endpoint or not key:
+        return []
+    version = env_str("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
+    url = f"{endpoint}/openai/deployments?api-version={version}"
+    request = urllib.request.Request(url, headers={"api-key": key})
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode())
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+        return []
+    names = []
+    for item in payload.get("data") or payload.get("value") or []:
+        name = item.get("id") or item.get("name")
+        if name:
+            names.append(str(name))
+    return names
+
+
+def is_deployment_missing(error: BaseException) -> bool:
+    text = str(error)
+    code = ""
+    body = getattr(error, "body", None)
+    if isinstance(body, dict):
+        inner = body.get("error") if isinstance(body.get("error"), dict) else body
+        code = str(inner.get("code") or "")
+    return "DeploymentNotFound" in text or code == "DeploymentNotFound"
+
+
+def deployment_missing_message(deployment: str, found: list[str] | None = None) -> str:
+    names = found if found is not None else list_azure_deployments()
+    listed = ", ".join(names) if names else "(none listed; open Azure Portal → Deployments)"
+    return (
+        f"Azure has no deployment named {deployment!r} on this resource. "
+        "That is not a missing second API key.\n"
+        "TEST_MODEL defaults to gpt-oss-20b; the name in the portal is often "
+        "different (gpt-oss-120b, or whatever you typed when you deployed).\n"
+        f"Deployments on this resource: {listed}\n"
+        "Copy the exact name, then:\n"
+        "  export AZURE_OPENAI_DEPLOYMENT=<exact-name>\n"
+        "Stop any tree that started after generate_seeds crashed; it is not using GPT-OSS seeds."
+    )
+
+
 def make_azure_client():
     from openai import AzureOpenAI, OpenAI
 
@@ -224,11 +274,18 @@ def answer_chat(
     deployment = azure_deployment(name)
     kwargs = {"model": deployment, "messages": messages, "temperature": temperature}
     try:
-        response = client.chat.completions.create(**kwargs, max_tokens=tokens)
+        try:
+            response = client.chat.completions.create(**kwargs, max_tokens=tokens)
+        except Exception as error:
+            if is_deployment_missing(error):
+                raise SystemExit(deployment_missing_message(deployment)) from error
+            if "max_token" not in str(error).lower() and "unsupported" not in str(error).lower():
+                raise
+            response = client.chat.completions.create(**kwargs, max_completion_tokens=tokens)
     except Exception as error:
-        if "max_token" not in str(error).lower() and "unsupported" not in str(error).lower():
-            raise
-        response = client.chat.completions.create(**kwargs, max_completion_tokens=tokens)
+        if is_deployment_missing(error):
+            raise SystemExit(deployment_missing_message(deployment)) from error
+        raise
     text = ""
     if response.choices:
         text = response.choices[0].message.content or ""
