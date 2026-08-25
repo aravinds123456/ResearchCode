@@ -121,8 +121,51 @@ class DesignDefaultTests(unittest.TestCase):
         from generate_seeds import SEED_JUDGE_TEMPLATE, parse_seed_judgement
         self.assertIn("without support", SEED_JUDGE_TEMPLATE)
         self.assertIn("wrong, fabricated", SEED_JUDGE_TEMPLATE)
+        self.assertIn("Do not aim for any hallucination rate", SEED_JUDGE_TEMPLATE)
+        self.assertIn("Judge only the ANSWER", SEED_JUDGE_TEMPLATE)
+        self.assertIn("do not score the question", SEED_JUDGE_TEMPLATE.lower())
         label, _ = parse_seed_judgement("Overall label: Hallucinating\nReason: invented citation")
         self.assertEqual(label, "Hallucinating")
+
+    def test_rejudge_rewrites_labels_not_answers(self):
+        from generate_seeds import apply_seed_judgement, rejudge_target_indexes
+        records = [
+            {
+                "seed_schema_version": 3,
+                "question_number": 0,
+                "sample_index": 0,
+                "model_name": "gpt-oss-20b",
+                "model_answer": "The radius is 13.02 km.",
+                "gemini_judgement": "Overall label: Not Hallucinating",
+            },
+            {
+                "seed_schema_version": 3,
+                "question_number": 2,
+                "sample_index": 0,
+                "model_name": "gpt-oss-20b",
+                "duplicate_answer": True,
+                "model_answer": "dup",
+            },
+            {
+                "seed_schema_version": 3,
+                "question_number": 99,
+                "sample_index": 0,
+                "model_name": "gpt-oss-20b",
+                "model_answer": "outside the pilot slice",
+            },
+        ]
+        self.assertEqual(rejudge_target_indexes(records, {0, 2}), [0])
+        updated = apply_seed_judgement(
+            records[0],
+            "Hallucinating",
+            "invented radius",
+            "Overall label: Hallucinating\nReason: invented radius",
+            "gpt-5-mini",
+        )
+        self.assertEqual(updated["model_answer"], "The radius is 13.02 km.")
+        self.assertEqual(updated["gemini_judgement"], "Overall label: Hallucinating")
+        self.assertEqual(updated["prompt_ids"]["seed_judge"], "seed_judge.v4")
+        self.assertEqual(updated["prompt_pack_version"], 2)
 
 
 class SamplingTests(unittest.TestCase):
@@ -262,8 +305,8 @@ class PartialRunTests(unittest.TestCase):
             self.assertTrue(all("turn_label_1" in row for row in lines))
             self.assertTrue(all(row.get("judge_parse_status") == "ok" for row in lines))
             self.assertTrue(all("turn_label_2" in row for row in leaves))
-            self.assertTrue(all(row.get("prompt_pack_version") == 1 for row in lines))
-            self.assertTrue(all("seed_judge.v3" in row.get("prompt_ids", {}).values() for row in lines))
+            self.assertTrue(all(row.get("prompt_pack_version") == 2 for row in lines))
+            self.assertTrue(all("seed_judge.v4" in row.get("prompt_ids", {}).values() for row in lines))
 
 
 class VerificationTests(unittest.TestCase):
@@ -401,9 +444,10 @@ class AzureDeploymentTests(unittest.TestCase):
 class AlgoverseWorkflowTests(unittest.TestCase):
     def test_prompts_are_loaded_from_versioned_json(self):
         from prompts_pack import fill_prompt, prompt_ids, prompt_pack_version, prompt_text
-        self.assertEqual(prompt_pack_version(), 1)
-        self.assertEqual(prompt_ids()["seed_judge"], "seed_judge.v3")
+        self.assertEqual(prompt_pack_version(), 2)
+        self.assertEqual(prompt_ids()["seed_judge"], "seed_judge.v4")
         self.assertIn("without support", prompt_text("seed_judge"))
+        self.assertIn("Do not aim for any hallucination rate", prompt_text("seed_judge"))
         filled = fill_prompt("seed_judge", question="Q?", answer="A.")
         self.assertIn("Q?", filled)
         self.assertIn("A.", filled)

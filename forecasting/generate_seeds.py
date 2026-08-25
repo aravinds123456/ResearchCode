@@ -121,6 +121,48 @@ def load_existing_seeds():
     return processed, answers_by_question
 
 
+def load_all_seed_records() -> list[dict]:
+    if not SEEDS_PATH.exists():
+        return []
+    return [json.loads(line) for line in SEEDS_PATH.open(encoding="utf-8") if line.strip()]
+
+
+def rewrite_seeds(records: list[dict]) -> None:
+    if not records:
+        SEEDS_PATH.write_text("", encoding="utf-8")
+        return
+    write(SEEDS_PATH, records[0], False)
+    for record in records[1:]:
+        write(SEEDS_PATH, record, True)
+
+
+def apply_seed_judgement(record: dict, label: str, reason: str, judge_raw: str, judge_model: str) -> dict:
+    """Stamp a new seed-judge label onto an existing generation. Does not change the answer."""
+    updated = dict(record)
+    updated["gemini_judgement"] = f"Overall label: {label}"
+    updated["judge_reason"] = reason
+    updated["judge_raw"] = judge_raw
+    updated["judge_model_name"] = judge_model
+    updated["prompt_pack_version"] = prompt_pack_version()
+    updated["prompt_ids"] = prompt_ids()
+    return updated
+
+
+def rejudge_target_indexes(records: list[dict], question_numbers: set[int]) -> list[int]:
+    indexes = []
+    for index, record in enumerate(records):
+        if record.get("seed_schema_version", 0) != SEED_SCHEMA_VERSION:
+            continue
+        if record.get("model_name") != MODEL_NAME:
+            continue
+        if record.get("question_number") not in question_numbers:
+            continue
+        if record.get("duplicate_answer"):
+            continue
+        indexes.append(index)
+    return indexes
+
+
 def sample_seed_value(question_number: int, sample_index: int) -> int:
     return (BASE_SEED * 1_000_003 + int(question_number) * 1_009 + sample_index) % (2**31 - 1)
 
@@ -189,12 +231,63 @@ def judge_seed(question: str, answer: str):
     return label, reason, raw_text
 
 
+def rejudge_existing(question_items, pilot: bool) -> None:
+    """Relabel saved answers with the current seed_judge prompt. Does not call GPT-OSS."""
+    from runtime import active_judge_model, judge_backend, setup_gemini
+
+    records = load_all_seed_records()
+    if not records:
+        raise SystemExit(f"No seed file to rejudge at {SEEDS_PATH}")
+    question_numbers = {number for number, _ in question_items}
+    targets = rejudge_target_indexes(records, question_numbers)
+    if not targets:
+        raise SystemExit(
+            f"No matching judged rows in {SEEDS_PATH.name} for this --pilot slice. "
+            "Generate seeds first, then rejudge."
+        )
+    print(
+        f"Rejudging {len(targets)} saved answers with {prompt_ids()['seed_judge']} "
+        f"(pack v{prompt_pack_version()}). GPT-OSS is not called."
+    )
+    if judge_backend() == "gemini":
+        setup_gemini()
+    judge_name = active_judge_model()
+    label_counts = Counter()
+    for index, record_index in enumerate(targets, start=1):
+        record = records[record_index]
+        answer = (record.get("model_answer") or record.get("qwen_answer") or "").strip()
+        question = record.get("question") or ""
+        qid = record.get("question_number")
+        progress = f"[{index}/{len(targets)}] q{qid}#{record.get('sample_index', 0)}"
+        if not answer:
+            print(f"{progress}: empty answer, skipping")
+            continue
+        label, reason, judge_raw = judge_seed(question, answer)
+        label_counts[label] += 1
+        records[record_index] = apply_seed_judgement(
+            record, label, reason, judge_raw, judge_name
+        )
+        print(f"{progress}: {label}" + (f" - {reason[:80]}" if reason else ""))
+    rewrite_seeds(records)
+    total = sum(label_counts.values())
+    hallucinating = label_counts["Hallucinating"]
+    print(f"\nRejudged {total} answers: {hallucinating} hallucinating, {total - hallucinating} clean")
+    if total:
+        print(f"Hallucination rate: {hallucinating / total:.1%}")
+    print(f"Wrote {SEEDS_PATH}")
+    if pilot:
+        write_pilot_stage("seeds", n=len(question_items), judged=total, model=MODEL_NAME)
+        print("Recorded 10-example seed-prompt debug in forecasting/results/pilot.json")
+    print(f"\nNext: python forecasting/pipeline.py tree --pilot --seeds {SEEDS_PATH} --resume")
+
+
 def main():
     questions = load_questions()
     processed_samples, answers_by_question = load_existing_seeds()
     question_items = list(questions.items())
     pilot = "--pilot" in sys.argv
     skip_pilot = "--skip-pilot" in sys.argv
+    rejudge = "--rejudge" in sys.argv
     dry_run = env_str("DRY_RUN", "") == "1"
     limit = DEFAULT_PILOT_QUESTIONS if pilot else MAX_QUESTIONS
     require_pilot(stage="seeds", n=limit or 10**9, dry_run=dry_run, skip_pilot=skip_pilot)
@@ -229,6 +322,11 @@ def main():
     print(f"Prompt pack: v{prompt_pack_version()} ids={prompt_ids()}")
     print("Workflow: debug prompts on ~10 examples (--pilot), then scale.")
     print(f"Questions: {len(question_items)} HalluHard items, {len(pending)} pending generations")
+    if processed_samples and not rejudge:
+        print(
+            f"Already judged {len(processed_samples)} samples in {SEEDS_PATH.name}; "
+            "pass --rejudge to relabel those answers with the current seed_judge prompt."
+        )
     print(
         f"Seed max_completion_tokens: {SEED_MAX_NEW_TOKENS} "
         "(hidden GPT-OSS reasoning counts against this; empty content usually means the cap was too low)"
@@ -243,6 +341,9 @@ def main():
     )
     if dry_run:
         print("DRY_RUN=1 set; validation passed, exiting before model/API calls.")
+        return
+    if rejudge:
+        rejudge_existing(question_items, pilot)
         return
     if not pending:
         print("Nothing to do.")

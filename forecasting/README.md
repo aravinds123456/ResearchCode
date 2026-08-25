@@ -93,6 +93,15 @@ python forecasting/pipeline.py report --tree forecasting/cascade_tree_dnv.jsonl
 
 A 100-seed tree without `forecasting/results/pilot.json` from step 2 exits with the lecture warning. Prompts are `forecasting/prompts/pack.json`; every row stores `prompt_pack_version` and `prompt_ids`.
 
+The GPT-5-mini **seed** judge is `seed_judge` (`seed_judge.v4`): Hallucinating vs Not Hallucinating. The tree labels DROP/CORRECT/REPEAT/DEPEND use a different prompt, `turn_label`. After changing `seed_judge`, relabel saved answers without regenerating GPT-OSS:
+
+```bash
+git pull halluhard main
+python forecasting/generate_seeds.py --pilot --rejudge
+```
+
+Do not delete the seed file for a judge change. Deleting it would redraw answers and confound the judge with the model. v4 is stricter about invented particulars and about not scoring the question excerpt. It does not aim for a target hallucination rate; 3/10 can be a real rate if the model mostly restated the excerpt.
+
 If your Azure endpoint is Models-as-a-Service, set
 `AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/`.
 
