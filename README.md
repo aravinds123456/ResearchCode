@@ -1,87 +1,114 @@
-# HalluHard: A Hard Multi-Turn Hallucination Benchmark
+# HalluHard
 
-**Cascade experiment docs (this checkout):** [forecasting/README.md](forecasting/README.md)
+A hard multi-turn hallucination **benchmark** ([paper](https://arxiv.org/abs/2602.01031), [halluhard.com](https://halluhard.com/)), plus a **cascade experiment** in this checkout that reuses the same questions.
 
 ![HalluHard open vs proprietary models](pics/halluhard_vertical_bar_open_vs_prop.png)
 
-A framework for evaluating hallucinations in multi-turn conversations across challenging domains.
-
-Check out our website for the updates on newly released models: https://halluhard.com/
-
-See [CHANGELOG.md](CHANGELOG.md) for the history of model additions and benchmark updates.
-
-## What's in this repository
-
-This checkout has two layers that share the same question files:
-
-| Layer | What it measures | Start here |
-|---|---|---|
-| **HalluHard benchmark** | How often a model invents facts in cited multi-turn chats (research, legal, medical, coding) | The rest of this README |
-| **Cascade experiment** | After the model has already made a false claim, what a 3-way D/N/V follow-up tree does to that same lie | **[forecasting/README.md](forecasting/README.md)** |
-
-The published HalluHard paper is the first layer. The cascade code reuses those questions but runs a different protocol: freeze one seed lie, fork **dependency-seeking / neutral / verification**, then fork each of those again (2 levels, **3 + 9 = 12** answering-model prompts per seed), and label each node `DROP` / `CORRECT` / `REPEAT` / `DEPEND`.
+| I want to… | Start here |
+|---|---|
+| Run the **cascade** study (after a lie: D/N/V tree → DROP / CORRECT / REPEAT / DEPEND) | [Cascade experiment](#cascade-experiment) · full walkthrough: **[forecasting/README.md](forecasting/README.md)** |
+| Reproduce the **HalluHard paper** (generate chats → judge claims → HTML) | [HalluHard benchmark](#halluhard-benchmark) |
+| See model additions | [CHANGELOG.md](CHANGELOG.md) |
 
 ```
-research_questions/   legal_cases/   medical_guidelines/   coding/
-    HalluHard tasks: generate conversations → judge claims → HTML report
-
-forecasting/
-    Cascade study: generate seeds → D/N/V tree (3²+3) → outcome tables
-
-judging_pipeline/     tools/     report.py
-    Shared claim judges, annotators, and the HalluHard HTML reporter
+HalluHard questions (research / legal / medical / coding)
+        │
+        ├─ paper pipeline     generate → web/code judge → HTML
+        └─ cascade (forecasting/)
+                              seed lie → 3-way D/N/V tree (12 answers/seed)
+                              → DROP / CORRECT / REPEAT / DEPEND
 ```
 
-If you cloned this repo to run or read the cascade study, skip to [forecasting/README.md](forecasting/README.md). The original one-shot / multi-turn HalluHard pipeline is documented below.
+These are different measurements. Do not hang a GPT-OSS tree off Qwen seeds. Do not treat cascade labels as a HalluHard essay grade.
 
-## Preparation
+---
 
-We use pixi to make sure our experiments are reproducible across all enviroments.
+## Cascade experiment
+
+After the answering model has already said something false, freeze that lie and grow a **2-level** tree of user moves:
+
+**dependency-seeking (D)** · **neutral (N)** · **verification (V)**
+
+That is **3 + 9 = 12** new model answers per seed. Level-1 answers are generated once and reused when children fork.
+
+| User move | What the user does |
+|---|---|
+| D | Treats the lie as true and asks what followed from it |
+| N | Asks something nearby; does not build on or challenge the lie |
+| V | Asks the model to **verify / reconsider** the claim (still never tells it the answer is wrong) |
+
+Each follow-up is labeled **only against the seed false claim**:
+
+| Label | Meaning |
+|---|---|
+| DROP | The lie faded (not used, not fixed) |
+| CORRECT | The model **explicitly retracts or replaces** the lie |
+| REPEAT | The model says the same false thing again |
+| DEPEND | The model uses the lie as a premise for new content (cascade) |
+
+Path winner: **DEPEND > REPEAT > CORRECT > DROP**. CORRECT is not “smarter prose”; it is a recant. A fluent restatement of the same claim is REPEAT.
+
+Default answering model: Azure **GPT-OSS**. Judge and follow-up writer: **gpt-5-mini**. Algoverse lecture (23 Aug 2026): **debug ~10 examples, version prompts in JSON, then scale. Report every outcome. Do not overclaim.**
+
+If this clone has two remotes, pull the cascade code from **`halluhard`**, not `origin` (that is often `HallucinationResearch`).
+
+```bash
+git checkout main
+git pull halluhard main
+
+export AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com/
+export AZURE_OPENAI_API_KEY=...
+export AZURE_OPENAI_DEPLOYMENT=<exact portal deployment name>
+export OPENAI_API_KEY=...   # gpt-5-mini
+
+python forecasting/generate_seeds.py --pilot
+# tree only after seeds_gpt-oss-20b.jsonl has Hallucinating rows
+python forecasting/pipeline.py tree --pilot --seeds forecasting/seeds_gpt-oss-20b.jsonl --resume
+python forecasting/pipeline.py report --tree forecasting/cascade_tree.jsonl
+```
+
+Scale to 100 seeds only after that 10-example debug looks right (same `forecasting/prompts/pack.json`). Full commands, env knobs, and empty-generation notes: **[forecasting/README.md](forecasting/README.md)**.
+
+`pixi run forecast-report` rebuilds tables from the old 61-seed Qwen snapshot (5 linear styles). That is **not** this D/N/V GPT-OSS tree.
+
+---
+
+## HalluHard benchmark
+
+Paper pipeline: cited multi-turn chats in research, legal, medical, and coding. How often a model invents facts, not what happens to one frozen lie.
 
 ### Installation
 
-Install [pixi](https://pixi.sh) package manager:
+[pixi](https://pixi.sh) keeps the paper runs reproducible.
 
-**Linux/macOS:**
+**Linux/macOS**
 ```bash
 curl -fsSL https://pixi.sh/install.sh | sh
 ```
 
-**Windows:**
-Download the installer from [pixi.sh](https://pixi.sh/latest/installation/#__tabbed_1_2) and run it.
-
-### Configuration
-
-Running models from hosted providers typically requires API credentials. Export the relevant environment variables for the providers/models you plan to use.
+**Windows:** installer from [pixi.sh](https://pixi.sh/latest/installation/#__tabbed_1_2).
 
 ```bash
 export OPENAI_API_KEY="..."
 export ANTHROPIC_API_KEY="..."
-# Add others as needed (e.g., Google/DeepSeek/Moonshot), depending on what you run.
+# Add others as needed (Google / DeepSeek / Moonshot / …)
 ```
 
+### Quick start
 
-## Quick Start
-
-### 1. Generate Responses
-
-Generate multi-turn conversations using different model:
+**1. Generate responses**
 
 ```bash
-# Example: Research Questions task
 pixi run python -m research_questions.generate_responses \
   --data research_questions/data/research_questions_all.jsonl \
   --model gpt-5 \
   --max-follow-ups 2 \
-  --max-concurrent 100 \
+  --max-concurrent 100
 ```
 
-Tips: 
-- You may need to change `--max-concurrent` to a smaller value if a rate limit is reached. 
-- Start with a tiny run first (the example below generates 3 conversations, each with 2 follow-up questions):
+Lower `--max-concurrent` if you hit a rate limit. Tiny smoke test:
 
 ```bash
-# Example: Research Questions task
 pixi run python -m research_questions.generate_responses \
   --data research_questions/data/research_questions_all.jsonl \
   --model gpt-5 \
@@ -90,16 +117,11 @@ pixi run python -m research_questions.generate_responses \
   --n 3
 ```
 
-### 2. Judge Responses
+**2. Judge responses**
 
-HalluHard supports two judging modes:
-
-A) Claim-based verification (`--type webscraper`)
-
-Extracts atomic claims (citation + supported content) per turn, searches the web, and judges claims against retrieved evidence. This is intended for tasks that require citation grounding.
+Claim-based (`--type webscraper`): extract claims, search the web, judge against evidence.
 
 ```bash
-# Evaluate using web scraper method
 pixi run python -m judging_pipeline.run_pipeline \
   --input "research_questions/results/conversations_gpt-5_250convs.jsonl" \
   --type webscraper \
@@ -110,21 +132,16 @@ pixi run python -m judging_pipeline.run_pipeline \
   --n 100
 ```
 
-B) Response-based verification (`--type coding_direct`)
-
-Directly evaluates coding-task responses using a coding-specific judge (e.g., checking package installation/importing and function calling behaviors). This mode is intended for the coding task.
+Coding (`--type coding_direct`): coding-specific judge (imports, function calls).
 
 ```bash
-# Evaluate coding task using direct coding judge
 pixi run python -m judging_pipeline.run_pipeline \
   --input "coding/results/conversations_gpt-5_200convs.jsonl" \
   --type coding_direct \
-  --task coding \
+  --task coding
 ```
 
-### 3. Generate Reports
-
-Generate an HTML report from an evaluation output file:
+**3. HTML report**
 
 ```bash
 pixi run report \
@@ -132,120 +149,63 @@ pixi run report \
   --input "research_questions/results/conversations_gpt-5_250convs_eval_webscraper.jsonl"
 ```
 
-## Cascade forecasting
+Paper launches: [final_run.sh](final_run.sh). Optional extra questions: `<task>/data_fetcher.py`.
 
-The cascade study lives under [`forecasting/`](forecasting/). Full walkthrough, labels, and file map: **[forecasting/README.md](forecasting/README.md)**.
+### Tasks
 
-Default design: **10-example prompt debug, then 100 seeds**, 2-level D/N/V tree, Azure `gpt-oss-20b`. Prompts are versioned in `forecasting/prompts/pack.json`. Reports include all four outcomes and incomplete seeds.
+Each task is **data → generate → judge → report**.
 
-```bash
-# No GPU: rebuild tables from the captured 61-seed snapshot
-pixi run forecast-report
-# or: python forecasting/pipeline.py report --from-partial
+- `research_questions` — academic research claims
+- `legal_cases` — case citations and facts
+- `medical_guidelines` — guideline claims
+- `coding` — implementation claims
 
-export AZURE_OPENAI_ENDPOINT=...
-export AZURE_OPENAI_API_KEY=...
-export OPENAI_API_KEY=...   # judge / follow-up writer
+### Evaluated models
 
-python forecasting/generate_seeds.py --pilot
-python forecasting/pipeline.py tree --pilot --seeds forecasting/seeds_gpt-oss-20b.jsonl --resume
-python forecasting/generate_seeds.py
-python forecasting/pipeline.py tree \
-  --seeds forecasting/seeds_gpt-oss-20b.jsonl \
-  --out forecasting/cascade_tree_dnv.jsonl \
-  --max-seeds 100 --levels 2 --resume
-python forecasting/pipeline.py report --tree forecasting/cascade_tree_dnv.jsonl
-```
+- **OpenAI:** `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-5-medium`, `gpt-5.2`, `gpt-5.2-medium-websearch`, `gpt-5.3`, `gpt-5.3-chat-latest`, `gpt-5.4`, `gpt-5.4-medium-websearch`
+- **Anthropic:** `claude-4-6-opus`, `claude-4-6-sonnet`, `claude-opus-4-5`, `claude-sonnet-4-5`, `claude-haiku-4-5`, `claude-opus-4-5-websearch`, …
+- **DeepSeek:** `deepseek-reasoner`, `deepseek-chat`
+- **Google:** `gemini-3.1-pro`, `gemini-3.1-pro-websearch`, `gemini-3-pro` (shut down since 9 Mar 2026), `gemini-3-flash`
+- **Moonshot:** `kimi-k2.5`, `kimi-k2-thinking`
+- **Z.ai:** `GLM-4.7-thinking`, `GLM-5-thinking`
+- **xAI:** `grok-4`, `grok-4-1-fast-reasoning`
 
-`python maincode.py` maps HallucinationResearchTest env vars (`TEST_MODEL`, `MAX_EXAMPLES`, `INPUT_PATH`, `OUTPUT_PATH`, `NUM_TURNS`) onto `pipeline.py tree`. Generate GPT-OSS seeds before the tree; do not hang this tree off a Qwen seed file.
-
-## Available Tasks
-
-- `research_questions` - Academic research question claims
-- `legal_cases` - Legal case citations and facts
-- `medical_guidelines` - Medical guideline claims
-- `coding` - Code implementation claims
-
-Each task follows the same workflow: 
-
-**data preparation → response generation → judging → reporting**
-
-## Evaluated Models
-
-The framework supports multiple LLM providers and models:
-
-- **OpenAI**: `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-5-medium`, `gpt-5.2`, `gpt-5.2-medium-websearch`, `gpt-5.3`, `gpt-5.3-chat-latest`,`gpt-5.4`, `gpt-5.4-medium-websearch`
-- **Anthropic**: `claude-4-6-opus`, `claude-4-6-sonnet`, `claude-opus-4-5`, `claude-sonnet-4-5`, `claude-haiku-4-5`, `claude-opus-4-5-websearch`, …
-- **DeepSeek**: `deepseek-reasoner`, `deepseek-chat`
-- **Google**: `gemini-3.1-pro`, `gemini-3.1-pro-websearch`, `gemini-3-pro` (shut down since March 9, 2026), `gemini-3-flash`
-- **Moonshot**: `kimi-k2.5`, `kimi-k2-thinking`
-- **Z.ai**: `GLM-4.7-thinking`, `GLM-5-thinking`
-- **xAI**: `grok-4`, `grok-4-1-fast-reasoning` 
-
-## Project Structure
+### Layout
 
 ```
 <task>/                       # research_questions, legal_cases, medical_guidelines, coding
-  ├── data/                    # Input data
-  │   └── *.jsonl             # Task-specific question datasets
-  ├── results/                 # Generated conversations and evaluations
-  │   ├── conversations_<model>_<n>convs.jsonl
-  │   ├── conversations_<model>_<n>convs_eval_<type>.jsonl
-  │   └── reports/             # HTML reports
-  ├── prompts/                 # Task-specific prompts
-  └── generate_responses.py    # Response generation script
+  data/*.jsonl
+  results/                    # conversations, evals, HTML
+  prompts/
+  generate_responses.py
 
-forecasting/                   # Cascade study (see forecasting/README.md)
-judging_pipeline/              # Claim judges used by the HalluHard path
-tools/                         # Annotators and judge-agreement scripts
+forecasting/                  # cascade study
+judging_pipeline/             # HalluHard claim judges
+tools/                        # annotators, agreement
 ```
 
-## CLI Reference
+### CLI
 
-### Response generation parameters
-- `--data`: Path to input data file
-- `--model`: Model name to use
-- `--max-follow-ups`: Number of follow-up questions per conversation (typically 2)
-- `--follow-up-model`: Model that simulates the user for follow-up questions (optional; default is `gpt-5-mini` when omitted)
-- `--max-concurrent`: Number of concurrent API requests (varies by model rate limits)
-- `--n`: Number of conversations to generate (optional, defaults to all)
-- `--output`: Custom output path (optional)
+**Generate:** `--data`, `--model`, `--max-follow-ups`, `--follow-up-model` (default `gpt-5-mini`), `--max-concurrent`, `--n`, `--output`
 
-### Judging pipeline parameters
-- `--input`: Path to conversations file to evaluate
-- `--type`: Evaluation method (`webscraper` or `coding_direct`)
-- `--seed`: Random seed for reproducibility
-- `--base_path`: Base directory for task
-- `--task`: Task name
-- `--max_claims_per_turn`: Maximum claims per turn (typically 5)
-- `--n`: Number of conversations to evaluate (optional)
-- `--judge-model`: When `--type` is `serper` or `webscraper` — registry id for the primary claim judge (default: `gpt-5-mini-medium`). Ignored for `openai` and `coding_direct`.
-- `--judge-fallback-model`: When `--type` is `serper` or `webscraper` — registry id for the judge on the web-grounding fallback path (default: `gpt-5-mini-medium-websearch`). Ignored for `openai` and `coding_direct`.
-- Worker parameters: `--searchers`, `--fetchers`, `--filters`, `--judges`
+**Judge:** `--input`, `--type` (`webscraper` or `coding_direct`), `--seed`, `--base_path`, `--task`, `--max_claims_per_turn`, `--n`, `--judge-model`, `--judge-fallback-model`, `--searchers`, `--fetchers`, `--filters`, `--judges`
 
-### Report generation parameters
-- `--task`: Task name
-- `--input`: Path to evaluation results file
+**Report:** `--task`, `--input`
 
-## Launch Experiments
-
-See [final_run.sh](final_run.sh) for the final launches used in the paper.
-
-## (Optional) Data Generation
-
-For full transparency, we provide our data generation pipelines under `<task_name>/data_fetcher.py`. Readers are welcome to re-use this script to generate more questions for their own use. 
+---
 
 ## Citing this work
-If you find our code useful, please cite our work
+
+If you use the HalluHard benchmark or code, please cite:
+
 ```
 @misc{fan2026halluhardhardmultiturnhallucination,
-      title={HalluHard: A Hard Multi-Turn Hallucination Benchmark}, 
+      title={HalluHard: A Hard Multi-Turn Hallucination Benchmark},
       author={Dongyang Fan and Sebastien Delsad and Nicolas Flammarion and Maksym Andriushchenko},
       year={2026},
       eprint={2602.01031},
       archivePrefix={arXiv},
       primaryClass={cs.AI},
-      url={https://arxiv.org/abs/2602.01031}, 
+      url={https://arxiv.org/abs/2602.01031},
 }
 ```
-
