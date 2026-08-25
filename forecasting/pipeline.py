@@ -335,7 +335,11 @@ def cmd_tree(args) -> None:
                                 "turn": level,
                                 "label": parse_judge_label(str(saved.get(f"turn_label_{level}", "drop"))),
                                 "followup_type": (saved.get("follow_up_path") or path)[level - 1],
-                                "state": saved.get(f"turn_state_{level}", "not_applicable"),
+                                "state": display_state(
+                                    saved.get(f"turn_label_{level}")
+                                    or saved.get(f"turn_state_{level}")
+                                    or "drop"
+                                ),
                             }
                             for level in range(1, depth + 1)
                             if saved.get(f"future_turn_{level}") is not None

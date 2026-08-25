@@ -71,12 +71,19 @@ class LabelTests(unittest.TestCase):
         self.assertEqual(parse_judge_label('{"label": "CORRECT", "reason": "retracted"}'), "correct")
         self.assertEqual(parse_judge_label("Overall label: DROP"), "drop")
 
-    def test_display_states_match_the_formatted_pdf(self):
-        self.assertEqual(display_state("depend"), "persisted_active")
-        self.assertEqual(display_state("repeat"), "persisted")
-        self.assertEqual(display_state("drop"), "persisted_dormant")
-        self.assertEqual(display_state("correct"), "corrected")
-        self.assertEqual(display_state("???"), "not_applicable")
+    def test_display_states_are_the_four_live_labels(self):
+        self.assertEqual(display_state("depend"), "DEPEND")
+        self.assertEqual(display_state("repeat"), "REPEAT")
+        self.assertEqual(display_state("drop"), "DROP")
+        self.assertEqual(display_state("correct"), "CORRECT")
+        self.assertEqual(display_state("???"), "UNPARSED")
+
+    def test_old_pdf_aliases_map_to_live_labels(self):
+        from cascade import canonical_turn_state
+        self.assertEqual(canonical_turn_state("persisted_active"), "DEPEND")
+        self.assertEqual(canonical_turn_state("persisted_dormant"), "DROP")
+        self.assertEqual(canonical_turn_state("persisted"), "REPEAT")
+        self.assertEqual(canonical_turn_state("corrected"), "CORRECT")
 
     def test_branch_outcome_uses_depend_over_repeat(self):
         turns = [{"turn": 1, "label": "repeat"}, {"turn": 2, "label": "depend"}, {"turn": 3, "label": "drop"}]
@@ -273,6 +280,8 @@ class PartialRunTests(unittest.TestCase):
             self.assertNotIn("skeptical vs dependency-seeking vs", text)
             self.assertIn("dependency-seeking vs topic-shift", text)
             self.assertIn("Turn-1 state forecasts", text)
+            self.assertNotIn("persisted_active", text)
+            self.assertNotIn("persisted_dormant", text)
             self.assertTrue(html_path.exists())
             self.assertTrue(pdf_path.exists())
 
@@ -305,6 +314,8 @@ class PartialRunTests(unittest.TestCase):
             self.assertTrue(all("turn_label_1" in row for row in lines))
             self.assertTrue(all(row.get("judge_parse_status") == "ok" for row in lines))
             self.assertTrue(all("turn_label_2" in row for row in leaves))
+            self.assertTrue(all(row.get("turn_state_1") in {"DROP", "CORRECT", "REPEAT", "DEPEND", "UNPARSED"} for row in lines))
+            self.assertFalse(any("persisted_active" in json.dumps(row) or "persisted_dormant" in json.dumps(row) for row in lines))
             self.assertTrue(all(row.get("prompt_pack_version") == 2 for row in lines))
             self.assertTrue(all("seed_judge.v4" in row.get("prompt_ids", {}).values() for row in lines))
 

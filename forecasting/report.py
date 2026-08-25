@@ -27,6 +27,7 @@ from cascade import (
     PARTIAL_RUN,
     TREE,
     all_paths,
+    canonical_turn_state,
     chi_square_2x2,
     domain_of,
     leaf_paths,
@@ -79,6 +80,18 @@ def load_partial(path: Path = PARTIAL_RUN) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def with_canonical_turn_states(record: dict) -> dict:
+    updated = dict(record)
+    for i in range(1, 12):
+        key = f"turn_state_{i}"
+        label_key = f"turn_label_{i}"
+        if updated.get(key):
+            updated[key] = canonical_turn_state(updated[key])
+        elif updated.get(label_key):
+            updated[key] = canonical_turn_state(updated[label_key])
+    return updated
+
+
 def records_from_partial(data: dict) -> list[dict]:
     out = []
     for seed in data["seeds"]:
@@ -95,7 +108,7 @@ def records_from_partial(data: dict) -> list[dict]:
             }
             for i, state in enumerate(branch["turns"], start=1):
                 rec[f"turn_state_{i}"] = state
-            out.append(rec)
+            out.append(with_canonical_turn_states(rec))
     return out
 
 
@@ -117,7 +130,7 @@ def records_from_live(tree_path: Path, labels_path: Path) -> list[dict]:
         rec["domain"] = rec.get("domain") or domain_of(rec)
         if label_row.get("judge_parse_status"):
             rec["judge_parse_status"] = label_row["judge_parse_status"]
-        out.append(rec)
+        out.append(with_canonical_turn_states(rec))
     return out
 
 
@@ -293,9 +306,10 @@ def activity_rates(records: list[dict]) -> dict[str, dict[str, float]]:
         ]
         n = len(states) or 1
         out[cat] = {
-            "active": states.count("persisted_active") / n,
-            "corrected": states.count("corrected") / n,
-            "dormant": states.count("persisted_dormant") / n,
+            "DEPEND": states.count("DEPEND") / n,
+            "CORRECT": states.count("CORRECT") / n,
+            "REPEAT": states.count("REPEAT") / n,
+            "DROP": states.count("DROP") / n,
             "n": float(len(states)),
         }
     return out
@@ -335,9 +349,9 @@ def headline_findings(records: list[dict]) -> list[str]:
                 f"(McNemar chi2={topic_row[7]:.2f}, p={topic_row[8]:.2f})."
             )
     t1 = turn1_forecast(records)
-    if "corrected" in t1 and t1["corrected"]["n"]:
-        n_c, ok = t1["corrected"]["n"], t1["corrected"]["CORRECT"]
-        findings.append(f"Turn-1 corrected forecasts a CORRECT branch: {ok}/{n_c} ({100 * ok / n_c:.0f}%).")
+    if "CORRECT" in t1 and t1["CORRECT"]["n"]:
+        n_c, ok = t1["CORRECT"]["n"], t1["CORRECT"]["CORRECT"]
+        findings.append(f"Turn-1 CORRECT forecasts a CORRECT branch: {ok}/{n_c} ({100 * ok / n_c:.0f}%).")
     sx = strategy_domain_counts(records)
     acc = sx.get("accepting", {})
     if acc:
@@ -352,7 +366,7 @@ def headline_findings(records: list[dict]) -> list[str]:
 
 
 def turn_dynamics(records: list[dict]) -> dict[str, list[float]]:
-    """Share of corrected / persisted_active states at each turn, by strategy."""
+    """Share of CORRECT turns at each depth, by strategy."""
     out: dict[str, list[float]] = {}
     by = defaultdict(list)
     for rec in records:
@@ -365,7 +379,7 @@ def turn_dynamics(records: list[dict]) -> dict[str, list[float]]:
             if not vals:
                 rates.append(None)
                 continue
-            rates.append(sum(v == "corrected" for v in vals) / len(vals))
+            rates.append(sum(v == "CORRECT" for v in vals) / len(vals))
         out[cat] = rates
     return out
 
@@ -481,9 +495,10 @@ def render_html(records: list[dict], meta: dict, path: Path) -> None:
     )
     activity_html = "".join(
         f"<tr><td>{html_escape(cat)}</td>"
-        f"<td>{100 * rates['active']:.0f}%</td>"
-        f"<td>{100 * rates['corrected']:.0f}%</td>"
-        f"<td>{100 * rates['dormant']:.0f}%</td></tr>"
+        f"<td>{100 * rates['DEPEND']:.0f}%</td>"
+        f"<td>{100 * rates['CORRECT']:.0f}%</td>"
+        f"<td>{100 * rates['REPEAT']:.0f}%</td>"
+        f"<td>{100 * rates['DROP']:.0f}%</td></tr>"
         for cat, rates in activity.items()
     )
     sx_html = "".join(
@@ -524,11 +539,11 @@ h1,h2,h3 {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }}
 table {{ border-collapse: collapse; width: 100%; margin: 0.8rem 0 1.6rem; font-size: 0.92rem; }}
 th, td {{ border: 1px solid #ccc; padding: 0.35rem 0.5rem; text-align: left; }}
 th {{ background: #222; color: #fff; }}
-td.corrected {{ background: #d8f3dc; }}
-td.persisted_active {{ background: #ffe3e0; }}
-td.persisted {{ background: #fff3bf; }}
-td.persisted_dormant {{ background: #e7f5ff; }}
-td.not_applicable {{ background: #eee; }}
+td.CORRECT {{ background: #d8f3dc; }}
+td.DEPEND {{ background: #ffe3e0; }}
+td.REPEAT {{ background: #fff3bf; }}
+td.DROP {{ background: #e7f5ff; }}
+td.UNPARSED {{ background: #eee; }}
 .claim {{ color: #444; font-style: italic; }}
 pre {{ white-space: pre-wrap; background: #f7f7f7; padding: 1rem; }}
 .note {{ background: #fff6e5; padding: 0.8rem 1rem; border-left: 4px solid #e0a100; }}
@@ -559,11 +574,11 @@ Do not cherry-pick. Do not overclaim.
 <h2>CORRECT rate by strategy and domain</h2>
 <table><thead><tr><th>strategy</th><th>research</th><th>legal</th><th>medical</th></tr></thead>
 <tbody>{sx_html}</tbody></table>
-<h2>Turn-level recovery rate (share of turns labeled corrected)</h2>
+<h2>Turn-level recovery rate (share of turns labeled CORRECT)</h2>
 <table><thead><tr><th>strategy</th>{''.join(f'<th>T{i}</th>' for i in range(1, n_turns + 1))}</tr></thead>
 <tbody>{dyn_html}</tbody></table>
 <h2>Claim still in play (share of turns)</h2>
-<table><thead><tr><th>strategy</th><th>persisted_active</th><th>corrected</th><th>persisted_dormant</th></tr></thead>
+<table><thead><tr><th>strategy</th><th>DEPEND</th><th>CORRECT</th><th>REPEAT</th><th>DROP</th></tr></thead>
 <tbody>{activity_html}</tbody></table>
 <h2>Turn-1 state forecasts branch outcome</h2>
 <table><thead><tr><th>turn-1 state</th><th>n</th><th>DROP</th><th>CORRECT</th><th>REPEAT</th><th>DEPEND</th></tr></thead>
@@ -793,7 +808,7 @@ def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_p
         n = counts["n"]
         print(f"  {state:<20} n={n:>3} " + " ".join(f"{o}={fmt_cell(counts[o], n)}" for o in OUTCOMES))
 
-    print("\nTurn-level P(corrected):")
+    print("\nTurn-level P(CORRECT):")
     for cat, rates in turn_dynamics(records).items():
         print(f"  {cat:<20} " + " ".join("---" if r is None else f"T{i+1}={100*r:4.0f}%" for i, r in enumerate(rates)))
 

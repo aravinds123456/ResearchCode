@@ -46,19 +46,19 @@ BRANCH_OUTCOME_BY_LABEL = {
     "correct": "CORRECT",
     "drop": "DROP",
 }
-DISPLAY_STATE = {
-    "depend": "persisted_active",
-    "repeat": "persisted",
-    "drop": "persisted_dormant",
-    "correct": "corrected",
+# Old HallucinationResearchTest / formatted-PDF aliases. Live runs do not use them.
+LEGACY_TURN_STATE = {
+    "persisted_active": "DEPEND",
+    "persisted_dormant": "DROP",
+    "persisted": "REPEAT",
+    "corrected": "CORRECT",
+    "new_hallucination": "DEPEND",
+    "not_applicable": "DROP",
+    "isolated": "DROP",
+    "snowballing": "DEPEND",
+    "propagated": "DEPEND",
+    "persistent": "REPEAT",
 }
-DISPLAY_STATES = (
-    "persisted",
-    "persisted_active",
-    "persisted_dormant",
-    "corrected",
-    "not_applicable",
-)
 
 DOMAINS = {
     "research": (ROOT / "research_questions/data/research_questions_all.jsonl", "research_question", 0),
@@ -370,8 +370,23 @@ def normalize_outcome(value: str) -> str:
     return LEGACY_OUTCOMES.get(raw.lower(), "DROP")
 
 
+def canonical_turn_state(value: str) -> str:
+    """Map a turn tag to DROP/CORRECT/REPEAT/DEPEND. Old PDF aliases included."""
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    upper = raw.upper()
+    if upper in OUTCOMES or upper == "UNPARSED":
+        return upper
+    lower = raw.lower()
+    if lower in BRANCH_OUTCOME_BY_LABEL:
+        return BRANCH_OUTCOME_BY_LABEL[lower]
+    return LEGACY_TURN_STATE.get(lower, "UNPARSED")
+
+
 def display_state(label: str) -> str:
-    return DISPLAY_STATE.get((label or "").lower(), "not_applicable")
+    """Live turn tags are DROP/CORRECT/REPEAT/DEPEND only."""
+    return canonical_turn_state(label) or "UNPARSED"
 
 
 def hint_for(label_or_state: str) -> str:
