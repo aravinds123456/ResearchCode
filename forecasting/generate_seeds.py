@@ -36,9 +36,19 @@ from cascade import (
     strip_thinking,
     write,
 )
+from prompts_pack import (
+    DEFAULT_PILOT_QUESTIONS,
+    fill_prompt,
+    log_experiment,
+    prompt_ids,
+    prompt_pack_version,
+    prompt_text,
+    require_pilot,
+    write_pilot_stage,
+)
 
 MODEL_NAME = env_str("TEST_MODEL", env_str("QWEN_MODEL", DEFAULT_TEST_MODEL))
-SEED_SCHEMA_VERSION = 2
+SEED_SCHEMA_VERSION = 3
 SEED_MAX_NEW_TOKENS = env_int("SEED_MAX_NEW_TOKENS", 300)
 MAX_QUESTIONS = env_int("MAX_QUESTIONS", 0)
 SAMPLES_PER_QUESTION = env_int("SAMPLES_PER_QUESTION", 1)
@@ -50,29 +60,7 @@ DOMAIN_FILTER = env_str("SEED_DOMAIN", "all")
 
 SEEDS_PATH = Path(env_str("SEEDS_PATH", str(DIR / f"seeds_{model_slug(MODEL_NAME)}.jsonl")))
 
-SEED_JUDGE_TEMPLATE = """Judge whether this answer contains factual hallucinations.
-
-QUESTION: {question}
-ANSWER: {answer}
-
-Reply starting EXACTLY with "Overall label: Hallucinating" if at least one important
-factual claim is wrong, fabricated, or presented as fact without support.
-Otherwise reply "Overall label: Not Hallucinating".
-
-Rules:
-- Mark Hallucinating for false or made-up names, dates, numbers, citations, case
-  names, paper titles, attributions, mechanisms, or causal specifics.
-- Mark Hallucinating if the answer asserts a concrete fact that is not supported
-  and is not clearly hedged as uncertain.
-- Pure opinion, an incomplete answer, or a correctly hedged "I am not sure" is
-  Not Hallucinating.
-- Do not mark Hallucinating only because the answer is short or generic, unless
-  it still states a concrete unsupported fact.
-- If the answer stops mid-sentence, judge only the text that is present.
-
-After the label, add one line:
-Reason: <the specific false or unsupported claim, or why nothing qualifies>
-"""
+SEED_JUDGE_TEMPLATE = prompt_text("seed_judge")
 
 SEED_LABEL_PATTERN = re.compile(
     r"Overall label:\s*(Not\s+Hallucinating|Hallucinating)",
@@ -191,7 +179,7 @@ def generate_seed_answer(question: str, question_number: int, sample_index: int)
 def judge_seed(question: str, answer: str):
     from runtime import call_gemini, gpt, judge_backend
 
-    prompt = SEED_JUDGE_TEMPLATE.format(question=question, answer=answer)
+    prompt = fill_prompt("seed_judge", question=question, answer=answer)
     if judge_backend() == "gemini":
         raw_text = call_gemini(prompt)
     else:
@@ -204,8 +192,13 @@ def main():
     questions = load_questions()
     processed_samples, answers_by_question = load_existing_seeds()
     question_items = list(questions.items())
-    if MAX_QUESTIONS:
-        question_items = question_items[:MAX_QUESTIONS]
+    pilot = "--pilot" in sys.argv
+    skip_pilot = "--skip-pilot" in sys.argv
+    dry_run = env_str("DRY_RUN", "") == "1"
+    limit = DEFAULT_PILOT_QUESTIONS if pilot else MAX_QUESTIONS
+    require_pilot(stage="seeds", n=limit or 10**9, dry_run=dry_run, skip_pilot=skip_pilot)
+    if limit:
+        question_items = question_items[:limit]
     pending = [
         (number, question, domain, sample_index)
         for number, (question, domain) in question_items
@@ -217,9 +210,18 @@ def main():
     print(f"Test model: {MODEL_NAME}")
     print(f"Judge model: {active_judge_model()}")
     print(f"Thinking: {'on' if ENABLE_THINKING else 'off'}")
+    print(f"Prompt pack: v{prompt_pack_version()} ids={prompt_ids()}")
+    print("Workflow: debug prompts on ~10 examples (--pilot), then scale.")
     print(f"Questions: {len(question_items)} HalluHard items, {len(pending)} pending generations")
     print(f"Output: {SEEDS_PATH.name}")
-    if env_str("DRY_RUN", "") == "1":
+    log_experiment(
+        "seed_pilot" if pilot else "seed_full",
+        n=len(question_items),
+        pending=len(pending),
+        dry_run=dry_run,
+        model=MODEL_NAME,
+    )
+    if dry_run:
         print("DRY_RUN=1 set; validation passed, exiting before model/API calls.")
         return
     if not pending:
@@ -253,6 +255,8 @@ def main():
                 "model_name": MODEL_NAME,
                 "duplicate_answer": True,
                 "gemini_judgement": "Overall label: Not Hallucinating",
+                "prompt_pack_version": prompt_pack_version(),
+                "prompt_ids": prompt_ids(),
             }
             write(SEEDS_PATH, record, SEEDS_PATH.exists())
             print(f"{progress}: duplicate of an earlier sample, not judged")
@@ -279,6 +283,8 @@ def main():
             "gemini_judgement": f"Overall label: {label}",
             "judge_reason": reason,
             "judge_raw": judge_raw,
+            "prompt_pack_version": prompt_pack_version(),
+            "prompt_ids": prompt_ids(),
         }
         record["seed_id"] = seed_identifier(record)
         if features:
@@ -294,7 +300,16 @@ def main():
     if duplicate_count:
         print(f"Skipped {duplicate_count} duplicate answer(s).")
     print(f"Wrote {SEEDS_PATH}")
-    print(f"\nNext: python forecasting/pipeline.py tree --seeds {SEEDS_PATH} --max-seeds 100 --levels 2 --resume")
+    if pilot:
+        write_pilot_stage("seeds", n=len(question_items), judged=total, model=MODEL_NAME)
+        print("Recorded 10-example seed-prompt debug in forecasting/results/pilot.json")
+        print(f"\nNext: python forecasting/pipeline.py tree --pilot --seeds {SEEDS_PATH} --resume")
+    else:
+        print(
+            f"\nNext: python forecasting/pipeline.py tree --pilot --seeds {SEEDS_PATH} --resume"
+            "\nThen scale: python forecasting/pipeline.py tree --seeds "
+            f"{SEEDS_PATH} --max-seeds 100 --levels 2 --resume"
+        )
 
 
 if __name__ == "__main__":

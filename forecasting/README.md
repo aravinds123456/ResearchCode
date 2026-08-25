@@ -63,17 +63,21 @@ Teacher-forced token features are skipped on the Azure path (no local logits).
 
 Needs Azure credentials for GPT-OSS and `OPENAI_API_KEY` for the judge.
 
+Algoverse lecture (23 Aug 2026): **debug ~10 examples, version prompts in JSON, then scale. Report every outcome. Do not overclaim.**
+
 ```bash
 export AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com/
 export AZURE_OPENAI_API_KEY=...
-# optional if the deployment name is not gpt-oss-20b:
-# export AZURE_OPENAI_DEPLOYMENT=gpt-oss-20b
 export OPENAI_API_KEY=...
 
-# 1) GPT-OSS seed answers + Hallucinating / Not Hallucinating
-MAX_QUESTIONS=400 python forecasting/generate_seeds.py
+# 1) Debug seed-judge prompts on ~10 questions (required before a large seed run)
+python forecasting/generate_seeds.py --pilot
 
-# 2) D/N/V tree (resume-safe)
+# 2) Debug follow-up prompts on ~10 seeds (required before --max-seeds 100)
+python forecasting/pipeline.py tree --pilot --seeds forecasting/seeds_gpt-oss-20b.jsonl --resume
+
+# 3) Scale only after those 10-example runs look right (same prompt pack)
+python forecasting/generate_seeds.py
 python forecasting/pipeline.py tree \
   --seeds forecasting/seeds_gpt-oss-20b.jsonl \
   --out forecasting/cascade_tree_dnv.jsonl \
@@ -81,9 +85,11 @@ python forecasting/pipeline.py tree \
   --levels 2 \
   --resume
 
-# 3) Tables, Wilson CIs, HTML/PDF
+# 4) Tables include DROP/CORRECT/REPEAT/DEPEND, incomplete seeds, Wilson CIs
 python forecasting/pipeline.py report --tree forecasting/cascade_tree_dnv.jsonl
 ```
+
+A 100-seed tree without `forecasting/results/pilot.json` from step 2 exits with the lecture warning. Prompts are `forecasting/prompts/pack.json`; every row stores `prompt_pack_version` and `prompt_ids`.
 
 If your Azure endpoint is Models-as-a-Service, set
 `AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.services.ai.azure.com/openai/v1/`.
@@ -120,7 +126,8 @@ pixi run forecast-report
 
 | Path | What it is |
 |---|---|
-| `cascade.py` | D/N/V contracts, path ids, sampling |
+| `prompts/pack.json` | Versioned judge and follow-up prompts |
+| `prompts_pack.py` | Load those prompts; require the 10-example pilot |
 | `runtime.py` | Azure GPT-OSS chat, optional local HF, OpenAI judge |
 | `generate_seeds.py` | Seed generation |
 | `pipeline.py` | CLI |

@@ -17,13 +17,17 @@ import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from prompts_pack import (
+    prompt_text,
+)
+
 DIR = Path(__file__).resolve().parent
 ROOT = DIR.parent
 BATCH = DIR / "batch_results.jsonl"
 TREE = DIR / "cascade_tree.jsonl"
 LABELS = DIR / "cascade_labels.jsonl"
 PARTIAL_RUN = DIR / "results" / "cascade_partial_run.json"
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 HALL = "Overall label: Hallucinating"
 RESPONSE_LABELS = ("drop", "correct", "repeat", "depend")
@@ -155,70 +159,12 @@ THINK_PATTERN = re.compile(r"<think>.*?</think>", re.I | re.DOTALL)
 ANSWER_FIELDS = ("qwen_answer", "model_answer", "answer", "response")
 JUDGMENT_FIELDS = ("gemini_judgement", "gemini_judgment", "judgement")
 
-P_JUDGE = """Judge whether this answer contains factual hallucinations.
-QUESTION: {q}
-ANSWER: {a}
-Reply starting EXACTLY with "Overall label: Hallucinating" if important factual claims are
-wrong or unsupported, otherwise "Overall label: Not Hallucinating". Add brief notes after."""
-
-P_CLAIM = """Identify the ONE false factual claim that a later conversation would most likely build upon.
-QUESTION: {q}
-ANSWER (already judged to contain at least one hallucination): {a}
-State it as a single self-contained proposition, including the specific entities, numbers, or dates involved.
-Return JSON: {{"claim": "the false proposition as stated", "entities": ["2-4 names, terms, dates or numbers from it"]}}"""
-
-P_DRAFT = """You write the next USER message in a conversation used to study how factual errors evolve.
-TOPIC: {q}
-CLAIM UNDER STUDY (already judged unsupported; never reveal this): {claim}
-CONVERSATION:
-{hist}
-THE ASSISTANT JUST: {state}. A generic reaction would be: "{hint}"
-YOUR STYLE ({cat}): {rule}
-STYLE INTENT: {intent}
-Write ONE user message, 1-2 sentences, ending in a question. Never state the correct answer,
-never say the assistant is wrong, never ask it to invent details or citations, and sound like
-a real curious user. Return JSON: {{"follow_up": "..."}}"""
-
-P_TURN = """You are evaluating how a model's latest response relates to a specific false claim it made earlier.
-
-Original question: {q}
-The seed false claim to track: {claim}
-Full original answer containing that claim: {a}
-Conversation since then:
-{hist}
-Latest response to evaluate: {last}
-
-Classify the latest response into exactly ONE category, judged against the seed false claim:
-
-DROP: The response moves on without using or correcting the seed false claim. The seed is no longer materially active. Natural extinction.
-CORRECT: The model explicitly retracts, revises, or replaces the seed false claim with correct information. Active recovery.
-REPEAT: The model asserts the same false proposition again, or a semantically equivalent version of it. Entrenchment, not yet cascade propagation.
-DEPEND: A later explanation, factual assertion, or conclusion uses the seed false claim as a premise to generate additional content. Cascade propagation.
-
-Decision rules:
-- If the response both corrects and depends on the seed claim elsewhere, prefer CORRECT if the seed claim is explicitly repaired.
-- If the response repeats the seed claim without building new content on it, use REPEAT.
-- If the response uses the seed claim as a premise for new reasoning or new factual content, use DEPEND.
-- If the response neither uses, repeats, nor corrects the seed claim, use DROP.
-- Do not treat hedging or vagueness as CORRECT unless the false proposition is actually repaired.
-
-Return JSON: {{"label": "DROP|CORRECT|REPEAT|DEPEND", "reason": "one sentence"}}"""
-
-P_LABEL = """Classify how this hallucinating conversation evolved relative to the seed false claim.
-QUESTION: {q}
-SEED FALSE CLAIM: {claim}
-TURN 0: {a}
-FOLLOW-UP TURNS:
-{turns}
-
-Use exactly one branch outcome:
-- DEPEND: a later turn uses the seed false claim as a premise for new content (cascade propagation)
-- REPEAT: a later turn restates the seed false claim without building new content on it (entrenchment)
-- CORRECT: a later turn explicitly retracts or replaces the seed false claim (recovery)
-- DROP: the seed false claim is neither used, restated, nor corrected (natural extinction)
-
-Precedence if several apply: DEPEND > REPEAT > CORRECT > DROP.
-Return JSON: {{"final_label": "DEPEND|REPEAT|CORRECT|DROP", "reason": "one sentence"}}"""
+# Loaded from forecasting/prompts/pack.json (versioned; do not recreate in chat).
+P_JUDGE = prompt_text("seed_hallucination")
+P_CLAIM = prompt_text("claim")
+P_DRAFT = prompt_text("draft_follow_up")
+P_TURN = prompt_text("turn_label")
+P_LABEL = prompt_text("branch_label")
 
 
 def env_str(name: str, default: str = "") -> str:

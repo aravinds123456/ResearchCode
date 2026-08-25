@@ -1,9 +1,8 @@
 """Cascade pipeline: 3-ary D/N/V tree + HallucinationResearchTest labels.
 
-  python forecasting/pipeline.py answer --domain all --resume
-  python forecasting/pipeline.py judge  --domain all --resume
-  python forecasting/pipeline.py tree   --max-seeds 100 --levels 2 --resume
-  python forecasting/pipeline.py label  --resume
+  python forecasting/generate_seeds.py --pilot
+  python forecasting/pipeline.py tree --pilot --resume
+  python forecasting/pipeline.py tree --max-seeds 100 --levels 2 --resume
   python forecasting/pipeline.py report --from-partial
   python forecasting/pipeline.py tree --dry-run --max-seeds 2
 """
@@ -32,11 +31,6 @@ from cascade import (
     HALL,
     LABELS,
     OUTCOMES,
-    P_CLAIM,
-    P_DRAFT,
-    P_JUDGE,
-    P_LABEL,
-    P_TURN,
     SCHEMA_VERSION,
     SEED_LABEL,
     STATES,
@@ -67,6 +61,15 @@ from cascade import (
     strip_question_prefix,
     strip_thinking,
     write,
+)
+from prompts_pack import (
+    DEFAULT_PILOT_SEEDS,
+    fill_prompt,
+    log_experiment,
+    prompt_ids,
+    prompt_pack_version,
+    require_pilot,
+    write_pilot_stage,
 )
 
 QWEN = env_str("TEST_MODEL", env_str("QWEN_MODEL", DEFAULT_TEST_MODEL))
@@ -125,7 +128,7 @@ def cmd_judge(args) -> None:
             if row["question_number"] in merged and merged[row["question_number"]].get("gemini_judgement"):
                 continue
             answer = strip_question_prefix(row["question"], row.get("qwen_answer") or row.get("model_answer", ""))
-            verdict = str(gpt(P_JUDGE.format(q=row["question"][:2000], a=answer[:6000]), False)).strip()
+            verdict = str(gpt(fill_prompt("seed_hallucination", q=row["question"][:2000], a=answer[:6000]), False)).strip()
             if not verdict.startswith("Overall label:"):
                 verdict = (
                     f"Overall label: {'Hallucinating' if 'Hallucinating' in verdict else 'Not Hallucinating'}\n{verdict}"
@@ -142,7 +145,7 @@ def cmd_judge(args) -> None:
 def _extract_claim(question: str, answer: str, dry_run: bool) -> tuple[str, list[str]]:
     if dry_run:
         return answer[:200], []
-    claim = gpt(P_CLAIM.format(q=question[:1500], a=answer[:3000]))
+    claim = gpt(fill_prompt("claim", q=question[:1500], a=answer[:3000]))
     text = strip_thinking(str(claim.get("claim", "")))[:800]
     entities = [str(e) for e in claim.get("entities", [])][:4]
     return text, entities
@@ -151,7 +154,8 @@ def _extract_claim(question: str, answer: str, dry_run: bool) -> tuple[str, list
 def _judge_turn(question: str, claim: str, answer: str, messages: list[dict], reply: str, dry_run: bool) -> tuple[str, str]:
     if dry_run:
         return "drop", "dry-run"
-    payload = gpt(P_TURN.format(
+    payload = gpt(fill_prompt(
+        "turn_label",
         q=question[:1500], claim=claim, a=answer[:2500],
         hist=history(messages), last=reply[:2500],
     ))
@@ -203,7 +207,8 @@ def _draft_follow_up(question, claim, messages, label, cat, entities, dry_run):
     if dry_run:
         return ask, why
     for _ in range(2):
-        drafted = str(gpt(P_DRAFT.format(
+        drafted = str(gpt(fill_prompt(
+            "draft_follow_up",
             q=question[:1500], claim=claim, hist=history(messages),
             state=label, hint=hint_for(label), cat=cat, rule=CATS[cat][0],
             intent=FOLLOWUP_TYPE_DESCRIPTIONS[cat],
@@ -227,6 +232,14 @@ def _messages_from_record(question: str, first: str, record: dict) -> list[dict]
 
 def cmd_tree(args) -> None:
     """Step C: full 3-ary D/N/V tree. Level 1 = 3 prompts, level 2 = 9 more (3^2+3)."""
+    if getattr(args, "pilot", False):
+        args.max_seeds = DEFAULT_PILOT_SEEDS
+    require_pilot(
+        stage="tree",
+        n=args.max_seeds,
+        dry_run=args.dry_run,
+        skip_pilot=getattr(args, "skip_pilot", False),
+    )
     cats = _resolve_categories(args.categories)
     raw_seeds = [
         r for r in rows(Path(args.seeds))
@@ -250,12 +263,22 @@ def cmd_tree(args) -> None:
     )
     print(f"Answer model: {args.model}")
     print(f"Judge model: {judge_name if not args.dry_run else 'dry-run'}")
+    print(f"Prompt pack: v{prompt_pack_version()} ids={prompt_ids()}")
+    print("Workflow: debug prompts on ~10 examples (--pilot), then scale. Do not send 100+ first.")
     print(
         "Sampling: "
         + ", ".join(
             f"{domain} {plan[domain]['selected']}/{plan[domain]['available']}"
             for domain in ("research", "legal", "medical", "total")
         )
+    )
+    log_experiment(
+        "tree_pilot" if getattr(args, "pilot", False) else "tree_full",
+        n=len(seeds),
+        levels=args.levels,
+        dry_run=args.dry_run,
+        model=args.model,
+        out=str(out),
     )
     chat = (lambda m: f"[stub] {m[-1]['content'][:60]}") if args.dry_run else load_answer_model(args.model)
 
@@ -355,6 +378,8 @@ def cmd_tree(args) -> None:
                         "label_counts": derived["label_counts"],
                         "first_depend_turn": derived["first_depend_turn"],
                         "first_correct_turn": derived["first_correct_turn"],
+                        "prompt_pack_version": prompt_pack_version(),
+                        "prompt_ids": prompt_ids(),
                         **features,
                         **record,
                     }
@@ -384,6 +409,9 @@ def cmd_tree(args) -> None:
                             "label_counts": derived["label_counts"],
                         }, Path(LABELS).exists() or seen)
                     print(f"  {path_key(path):<40} {state} -> {derived['branch_outcome']}")
+    if getattr(args, "pilot", False) and not args.dry_run:
+        write_pilot_stage("tree", n=len(seeds), out=str(out), model=args.model)
+        print("Recorded 10-example tree-prompt debug in forecasting/results/pilot.json")
     print(f"\n-> {out}")
 
 
@@ -408,7 +436,8 @@ def cmd_label(args) -> None:
                 f"USER: {row.get(f'follow_up_{n}', '')}\nASSISTANT: {row.get(f'future_turn_{n}', '')[:1500]}"
                 for n in range(1, row.get("levels", 5) + 1) if f"future_turn_{n}" in row
             )
-            out = gpt(P_LABEL.format(
+            out = gpt(fill_prompt(
+                "branch_label",
                 q=row["question"][:1500],
                 claim=str(row.get("false_claim") or row.get("claim", ""))[:800],
                 a=row["original_answer"][:2500],
@@ -463,6 +492,16 @@ def main() -> None:
     tree.add_argument("--levels", type=int, default=DEFAULT_TURNS)
     tree.add_argument("--categories", default="all")
     tree.add_argument("--dry-run", action="store_true", help="stub answers, no GPU or API")
+    tree.add_argument(
+        "--pilot",
+        action="store_true",
+        help="debug prompts on 10 seeds before scaling (Algoverse lecture)",
+    )
+    tree.add_argument(
+        "--skip-pilot",
+        action="store_true",
+        help="allow >10 seeds without a recorded 10-example prompt debug",
+    )
     label = sub.add_parser("label", help="label branch outcomes")
     label.add_argument("--tree", default=str(TREE))
     label.add_argument("--llm-label", action="store_true", help="ask the judge model instead of deriving")

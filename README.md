@@ -136,7 +136,7 @@ pixi run report \
 
 The cascade study lives under [`forecasting/`](forecasting/). Full walkthrough, labels, and file map: **[forecasting/README.md](forecasting/README.md)**.
 
-Default design: **100** seeds, **2-level 3-ary tree** (D / N / V), **12** GPT-OSS answers per seed. Answering model `gpt-oss-20b` on Azure. Judge and follow-up writer `gpt-5-mini`.
+Default design: **10-example prompt debug, then 100 seeds**, 2-level D/N/V tree, Azure `gpt-oss-20b`. Prompts are versioned in `forecasting/prompts/pack.json`. Reports include all four outcomes and incomplete seeds.
 
 ```bash
 # No GPU: rebuild tables from the captured 61-seed snapshot
@@ -147,7 +147,9 @@ export AZURE_OPENAI_ENDPOINT=...
 export AZURE_OPENAI_API_KEY=...
 export OPENAI_API_KEY=...   # judge / follow-up writer
 
-MAX_QUESTIONS=400 python forecasting/generate_seeds.py
+python forecasting/generate_seeds.py --pilot
+python forecasting/pipeline.py tree --pilot --seeds forecasting/seeds_gpt-oss-20b.jsonl --resume
+python forecasting/generate_seeds.py
 python forecasting/pipeline.py tree \
   --seeds forecasting/seeds_gpt-oss-20b.jsonl \
   --out forecasting/cascade_tree_dnv.jsonl \

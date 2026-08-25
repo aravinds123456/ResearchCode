@@ -39,63 +39,37 @@ from cascade import (
 )
 
 WHAT_TO_UPDATE = """
-What to update before the next full run
-=======================================
-0. Expand the judged seed pool. The formatted PDF sampled 100 of 475
-   hallucinating answers (143 research, 126 legal, 206 medical). This repo's
-   forecasting/batch_results.jsonl only has the 60-question pilot (18
-   hallucinating). Re-generate and judge the full HalluHard splits first:
-     python forecasting/pipeline.py answer --domain all --resume
-     python forecasting/pipeline.py judge  --domain all --resume
-   Or, for a new model:
-     TEST_MODEL=Qwen/Qwen3.5-2B python forecasting/generate_seeds.py
+Algoverse lecture (23 Aug 2026) — do this in order
+==================================================
+1. Iterate small. Debug prompts on ~10 examples before any 100+ run:
+     python forecasting/generate_seeds.py --pilot
+     python forecasting/pipeline.py tree --pilot --resume
+   Sending 100+ first creates expensive, untraceable errors.
 
-1. Run the 3-ary D/N/V tree. After the seed lie, fork dependency-seeking,
-   neutral, and verification, then fork those three again (2 levels).
-   That is 3 + 9 = 12 answering-model prompts per seed, not five
-   straight-line styles. Start with:
+2. Version prompts. All judge/follow-up text lives in
+   forecasting/prompts/pack.json. Do not recreate prompts in chat.
+   Re-run --pilot after any pack.json change.
+
+3. Then scale the already-debugged pack:
      python forecasting/pipeline.py tree --max-seeds 100 --levels 2 --resume
-     python forecasting/pipeline.py label --resume
      python forecasting/pipeline.py report
 
-2. Use round-robin domain sampling (now the default). The PDF planned 34/33/33
-   research/legal/medical but the captured set drifted to 18/27/16 because a
-   shuffled list was truncated. Round-robin keeps a stopped run balanced.
+Honest reporting
+================
+Do not cherry-pick. Every table includes DROP, CORRECT, REPEAT, and DEPEND.
+Failures use the same Wilson CI format as successes. Incomplete seeds are
+listed by id; they are not silently dropped from n.
 
-3. Judge every turn with DROP / CORRECT / REPEAT / DEPEND, then derive the
-   branch outcome. The formatted PDF mixed two vocabularies (persisted vs
-   persisted_active/dormant) and some branches disagree with their turn
-   states (e.g. seed 1 accepting is five "persisted" turns labeled CORRECT).
-   Derived outcomes remove that inconsistency.
+Do not overclaim. This run measures DROP/CORRECT/REPEAT/DEPEND on a 2-level
+D/N/V tree against the seed false claim. It does not "solve multi-step
+reasoning."
 
-4. Turn thinking off and strip <think> blocks. Qwen3.5 thinks by default;
-   the runner hard-disables it with enable_thinking=False (override with
-   ENABLE_THINKING=1) and still strips leftover think tags. Otherwise the
-   token budget is spent on hidden chain-of-thought and the question is echoed.
-
-5. Score teacher-forced token probability of the emitted answer, not
-   max-softmax. Max-softmax is peakedness and tracks entropy; forecasting
-   needs the probability of the tokens the model actually wrote. Stored on
-   each branch as init_average_confidence / init_average_entropy / etc.
-
-6. Generate seeds with the model under test. Do not score Llama (or any
-   other model) on Qwen's answers:
-     TEST_MODEL=... python forecasting/generate_seeds.py
-     python forecasting/pipeline.py tree --seeds forecasting/seeds_<slug>.jsonl --resume
-
-7. Use the mixed D/N/V tree (3^2+3 prompts). Do not run accepting or
-   topic-shift. Level-1 answers are generated once and reused when the
-   three level-2 children fork.
-
-8. Default answering model is Azure GPT-OSS (`gpt-oss-20b`, TEST_MODEL).
-   Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY. Default OpenAI
-   judge and follow-up writer is gpt-5-mini (OPENAI_LABEL_MODEL). Cap
-   seed generation with MAX_QUESTIONS=400 if needed. Generate GPT-OSS
-   seeds; do not hang a GPT-OSS tree off Qwen seed files.
-
-9. Report with Wilson 95% CIs and a domain breakdown. Percentages in the
-   formatted PDF are point estimates on an incomplete sample; CIs and the
-   domain split are what a reader should see.
+What else to keep
+=================
+- Round-robin domain sampling so a stopped run stays balanced.
+- Derive branch outcomes from DROP/CORRECT/REPEAT/DEPEND; do not mix vocabularies.
+- Generate seeds with the model under test (GPT-OSS seeds for a GPT-OSS tree).
+- Wilson 95% CIs and the domain split; the formatted PDF was an incomplete sample.
 """.strip()
 
 
@@ -564,8 +538,9 @@ CORRECT = recovery.</p>
 </div>
 <div class="note"><strong>This is still a partial run.</strong>
 Planned {complete['planned_branches']} branches; captured {complete['captured_branches']}.
-Captured domain mix: {html_escape(domain_mix)}. Finish with
-<code>python forecasting/pipeline.py tree --max-seeds 100 --levels 2 --resume</code>.
+Captured domain mix: {html_escape(domain_mix)}. Debug prompts on ~10 examples first:
+<code>python forecasting/pipeline.py tree --pilot --resume</code>, then scale.
+Do not cherry-pick. Do not overclaim.
 </div>
 <h2>Headline findings (same-seed, stronger than the formatted PDF)</h2>
 <ul>{findings_html}</ul>

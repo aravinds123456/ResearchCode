@@ -85,6 +85,8 @@ class DesignDefaultTests(unittest.TestCase):
         self.assertEqual(prompt_count(3, 2), 12)
         self.assertEqual(len(all_paths(list(CATS), 2)), 12)
         self.assertEqual(set(CATS), {"dependency-seeking", "neutral", "verification"})
+        from prompts_pack import DEFAULT_PILOT_SEEDS
+        self.assertEqual(DEFAULT_PILOT_SEEDS, 10)
 
     def test_default_models_are_gptoss_and_gpt5_mini(self):
         self.assertEqual(DEFAULT_TEST_MODEL, "gpt-oss-20b")
@@ -203,6 +205,8 @@ class PartialRunTests(unittest.TestCase):
             text = html_path.read_text()
             self.assertIn("Hallucination Cascade Forecasting Results", text)
             self.assertIn("Wilson", text)
+            self.assertIn("Do not cherry-pick", text)
+            self.assertIn("Do not overclaim", text)
             self.assertIn("q100018", text)
             self.assertIn("Same-seed McNemar", text)
             self.assertNotIn("skeptical vs dependency-seeking vs", text)
@@ -239,6 +243,8 @@ class PartialRunTests(unittest.TestCase):
             self.assertTrue(all(row.get("domain") in {"research", "legal", "medical"} for row in lines))
             self.assertTrue(all("turn_label_1" in row for row in lines))
             self.assertTrue(all("turn_label_2" in row for row in leaves))
+            self.assertTrue(all(row.get("prompt_pack_version") == 1 for row in lines))
+            self.assertTrue(all("seed_judge.v3" in row.get("prompt_ids", {}).values() for row in lines))
 
 
 class VerificationTests(unittest.TestCase):
@@ -309,6 +315,31 @@ class ThinkingOffTests(unittest.TestCase):
         runtime.build_model_inputs(original)
         self.assertEqual(original[0]["content"], "What is compound X47?")
         self.assertIn("/no_think", runtime.tokenizer.messages[0]["content"])
+
+
+class AlgoverseWorkflowTests(unittest.TestCase):
+    def test_prompts_are_loaded_from_versioned_json(self):
+        from prompts_pack import fill_prompt, prompt_ids, prompt_pack_version, prompt_text
+        self.assertEqual(prompt_pack_version(), 1)
+        self.assertEqual(prompt_ids()["seed_judge"], "seed_judge.v3")
+        self.assertIn("without support", prompt_text("seed_judge"))
+        filled = fill_prompt("seed_judge", question="Q?", answer="A.")
+        self.assertIn("Q?", filled)
+        self.assertIn("A.", filled)
+
+    def test_scaling_past_ten_requires_a_matching_pilot(self):
+        import prompts_pack
+        previous = prompts_pack.PILOT_PATH
+        with tempfile.TemporaryDirectory() as tmp:
+            prompts_pack.PILOT_PATH = Path(tmp) / "pilot.json"
+            self.addCleanup(lambda: setattr(prompts_pack, "PILOT_PATH", previous))
+            with self.assertRaises(SystemExit) as raised:
+                prompts_pack.require_pilot(stage="tree", n=100, dry_run=False, skip_pilot=False)
+            self.assertIn("10 examples", str(raised.exception))
+            prompts_pack.require_pilot(stage="tree", n=100, dry_run=True, skip_pilot=False)
+            prompts_pack.require_pilot(stage="tree", n=10, dry_run=False, skip_pilot=False)
+            prompts_pack.write_pilot_stage("tree", n=10, model="gpt-oss-20b")
+            prompts_pack.require_pilot(stage="tree", n=100, dry_run=False, skip_pilot=False)
 
 
 if __name__ == "__main__":
