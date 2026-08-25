@@ -16,9 +16,10 @@ from cascade import (
 )
 
 GEMINI_RETRIES = env_int("GEMINI_RETRIES", 5)
-# Hidden GPT-OSS reasoning tokens count against this cap. 400 often yields
-# empty message.content (finish_reason=length) and "empty generation, skipping".
-MAX_NEW_TOKENS = env_int("MAX_NEW_TOKENS", 2048)
+# Hidden GPT-OSS reasoning counts against this. Default is the usual Azure
+# GPT-OSS output cap. Override with MAX_TOKENS or MAX_NEW_TOKENS.
+DEFAULT_MAX_TOKENS = 32768
+MAX_NEW_TOKENS = env_int("MAX_TOKENS", env_int("MAX_NEW_TOKENS", DEFAULT_MAX_TOKENS))
 JUDGE_MODEL_NAME = env_str("JUDGE_MODEL", "gemini-2.5-flash")
 OPENAI_MODEL = env_str("OPENAI_LABEL_MODEL", DEFAULT_OPENAI_JUDGE)
 OPENAI_REASONING_EFFORT = env_str("OPENAI_REASONING_EFFORT", "minimal")
@@ -158,14 +159,14 @@ def followup_max_new_tokens() -> int:
     override = os.environ.get("FOLLOWUP_MAX_NEW_TOKENS", "").strip()
     if override:
         return int(override)
-    return max(1024, MAX_NEW_TOKENS)
+    return MAX_NEW_TOKENS
 
 
 def empty_retry_tokens(current: int) -> int:
     override = os.environ.get("AZURE_EMPTY_RETRY_TOKENS", "").strip()
     if override:
         return int(override)
-    return max(int(current) * 2, 4096)
+    return min(max(int(current) * 2, 4096), DEFAULT_MAX_TOKENS)
 
 
 def load_qwen(name: str):
@@ -336,7 +337,7 @@ def azure_create_kwargs(
     kwargs = {
         "model": deployment,
         "messages": messages,
-        "max_completion_tokens": int(max_new_tokens),
+        "max_tokens": int(max_new_tokens),
     }
     if send_temperature and temperature is not None:
         kwargs["temperature"] = temperature
@@ -404,6 +405,14 @@ def azure_chat_create(client, kwargs: dict):
                 extra.pop("reasoning_effort", None)
                 stripped.add("reasoning_effort")
                 continue
+            if "max_tokens" in pending and "max_tokens" not in stripped and (
+                is_unsupported_parameter(error, "max_tokens")
+                or "max_tokens" in str(error).lower()
+            ):
+                tokens = pending.pop("max_tokens")
+                pending["max_completion_tokens"] = tokens
+                stripped.add("max_tokens")
+                continue
             if "max_completion_tokens" in pending and "max_completion_tokens" not in stripped and (
                 is_unsupported_parameter(error, "max_completion_tokens")
                 or "max_completion_tokens" in str(error).lower()
@@ -458,18 +467,22 @@ def azure_answer_text(
 
     why = describe_completion(choice, usage)
     retry_tokens = empty_retry_tokens(max_new_tokens)
-    print(
-        f"empty assistant content ({why}); retrying with max_completion_tokens={retry_tokens}",
-        file=sys.stderr,
-    )
-    retry_kwargs = dict(kwargs)
-    if "max_completion_tokens" in retry_kwargs:
-        retry_kwargs["max_completion_tokens"] = retry_tokens
+    if retry_tokens > int(max_new_tokens):
+        print(
+            f"empty assistant content ({why}); retrying with max_tokens={retry_tokens}",
+            file=sys.stderr,
+        )
+        retry_kwargs = dict(kwargs)
+        if "max_tokens" in retry_kwargs:
+            retry_kwargs["max_tokens"] = retry_tokens
+        else:
+            retry_kwargs["max_completion_tokens"] = retry_tokens
+        choice, message, usage, visible = _azure_answer_once(client, retry_kwargs)
+        if visible:
+            return strip_thinking(visible)
+        why = describe_completion(choice, usage)
     else:
-        retry_kwargs["max_tokens"] = retry_tokens
-    choice, message, usage, visible = _azure_answer_once(client, retry_kwargs)
-    if visible:
-        return strip_thinking(visible)
+        print(f"empty assistant content ({why})", file=sys.stderr)
 
     why = describe_completion(choice, usage)
     reasoning = extract_reasoning_text(message) if message is not None else ""
@@ -531,10 +544,7 @@ def load_answer_model(name: str):
     if uses_azure_answer(name):
         endpoint, _ = azure_credentials()
         print(f"Answer model: {azure_deployment(name)} via Azure ({endpoint or 'set AZURE_OPENAI_ENDPOINT'})")
-        print(
-            f"Follow-up max_completion_tokens={followup_max_new_tokens()} "
-            f"reasoning_effort={azure_reasoning_effort() or 'off'}"
-        )
+        print(f"Follow-up max_tokens={followup_max_new_tokens()} reasoning_effort={azure_reasoning_effort() or 'off'}")
 
         def chat(messages):
             return answer_chat(

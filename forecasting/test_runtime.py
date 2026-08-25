@@ -82,26 +82,27 @@ class ExtractTests(unittest.TestCase):
 
 
 class PayloadTests(unittest.TestCase):
-    def test_prefers_max_completion_tokens_and_low_effort(self):
+    def test_prefers_max_tokens_and_low_effort(self):
         kwargs = azure_create_kwargs(
             "gpt-oss-20b",
             [{"role": "user", "content": "hi"}],
-            2048,
+            32768,
             temperature=0.7,
             send_temperature=False,
             reasoning_effort="low",
         )
-        self.assertEqual(kwargs["max_completion_tokens"], 2048)
-        self.assertNotIn("max_tokens", kwargs)
+        self.assertEqual(kwargs["max_tokens"], 32768)
+        self.assertNotIn("max_completion_tokens", kwargs)
         self.assertNotIn("temperature", kwargs)
         self.assertEqual(kwargs["reasoning_effort"], "low")
 
-    def test_empty_retry_is_at_least_4096(self):
+    def test_empty_retry_is_at_least_4096_and_capped(self):
         self.assertEqual(empty_retry_tokens(300), 4096)
         self.assertEqual(empty_retry_tokens(3000), 6000)
+        self.assertEqual(empty_retry_tokens(32768), 32768)
 
-    def test_followup_budget_is_not_256(self):
-        self.assertGreaterEqual(followup_max_new_tokens(), 1024)
+    def test_followup_budget_uses_max_tokens_default(self):
+        self.assertGreaterEqual(followup_max_new_tokens(), 32768)
 
     def test_temperature_rejection_is_detected(self):
         error = ValueError("Unsupported value: 'temperature' does not support 0.7")
@@ -128,8 +129,8 @@ class AzureAnswerTests(unittest.TestCase):
         )
         self.assertEqual(text, "The treaty was signed in 1815.")
         self.assertEqual(len(client.calls), 2)
-        self.assertEqual(client.calls[0]["max_completion_tokens"], 300)
-        self.assertEqual(client.calls[1]["max_completion_tokens"], 4096)
+        self.assertEqual(client.calls[0]["max_tokens"], 300)
+        self.assertEqual(client.calls[1]["max_tokens"], 4096)
         self.assertEqual(client.calls[0]["reasoning_effort"], "low")
 
     def test_does_not_use_reasoning_as_the_public_answer_when_fallback_off(self):
@@ -225,10 +226,10 @@ class AzureAnswerTests(unittest.TestCase):
 
 
 class AzureCreateLoopTests(unittest.TestCase):
-    def test_max_completion_tokens_falls_back_to_max_tokens(self):
+    def test_max_tokens_falls_back_to_max_completion_tokens(self):
         client = ScriptedClient(
             [
-                ValueError("Unsupported parameter: max_completion_tokens"),
+                ValueError("Unsupported parameter: max_tokens"),
                 make_response(content="ok", finish_reason="stop"),
             ]
         )
@@ -237,12 +238,12 @@ class AzureCreateLoopTests(unittest.TestCase):
             {
                 "model": "gpt-oss-20b",
                 "messages": [{"role": "user", "content": "q"}],
-                "max_completion_tokens": 2048,
+                "max_tokens": 32768,
             },
         )
         self.assertEqual(response.choices[0].message.content, "ok")
-        self.assertNotIn("max_completion_tokens", client.calls[1])
-        self.assertEqual(client.calls[1]["max_tokens"], 2048)
+        self.assertNotIn("max_tokens", client.calls[1])
+        self.assertEqual(client.calls[1]["max_completion_tokens"], 32768)
 
 
 if __name__ == "__main__":

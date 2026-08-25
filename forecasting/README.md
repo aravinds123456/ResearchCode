@@ -164,14 +164,14 @@ Do not point `--seeds` at a Qwen file if the tree is GPT-OSS. Do not mix the old
 | `MAX_QUESTIONS` | all HalluHard items | Cap seed generation |
 | `MAX_EXAMPLES` | `100` | Seeds in the tree |
 | `NUM_TURNS` | `2` | Tree depth |
-| `SEED_MAX_NEW_TOKENS` | `2048` | Seed `max_completion_tokens` (hidden reasoning counts against this) |
-| `MAX_NEW_TOKENS` | `2048` | Tree follow-ups use `max(1024, this)` |
+| `SEED_MAX_NEW_TOKENS` | `32768` | Seed `max_tokens` (or `MAX_TOKENS`) |
+| `MAX_NEW_TOKENS` / `MAX_TOKENS` | `32768` | Tree follow-up `max_tokens` |
 
 ## Empty generation, skipping
 
 Azure GPT-OSS is a reasoning model. Hidden reasoning tokens count against the completion cap. If that cap is too small (the old default was 300), Azure returns `finish_reason=length` with empty `message.content`, and seed generation prints `empty generation, skipping`.
 
-This checkout uses `max_completion_tokens`, `reasoning_effort=low`, a 2048 default, and one retry at 4096. The skip line now includes that token cap. stderr also prints `finish_reason` and `reasoning_tokens` when content is empty.
+This checkout sends `max_tokens=32768` by default (`reasoning_effort=low`). If Azure rejects `max_tokens`, it retries with `max_completion_tokens`. The skip line prints the cap. stderr also prints `finish_reason` and `reasoning_tokens` when content is empty.
 
 Pull, set `AZURE_OPENAI_DEPLOYMENT` to the portal name, then re-run **only** `--pilot` seeds. Do not start the tree until `forecasting/seeds_gpt-oss-20b.jsonl` has judged rows.
 

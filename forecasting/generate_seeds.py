@@ -49,8 +49,8 @@ from prompts_pack import (
 
 MODEL_NAME = env_str("TEST_MODEL", env_str("QWEN_MODEL", DEFAULT_TEST_MODEL))
 SEED_SCHEMA_VERSION = 3
-# GPT-OSS hidden reasoning counts against this. 300 often returns empty content.
-SEED_MAX_NEW_TOKENS = env_int("SEED_MAX_NEW_TOKENS", 2048)
+# GPT-OSS hidden reasoning counts against this. Same default as runtime MAX_TOKENS.
+SEED_MAX_NEW_TOKENS = env_int("SEED_MAX_NEW_TOKENS", env_int("MAX_TOKENS", 32768))
 MAX_QUESTIONS = env_int("MAX_QUESTIONS", 0)
 SAMPLES_PER_QUESTION = env_int("SAMPLES_PER_QUESTION", 1)
 TEMPERATURE = env_float("TEMPERATURE", 0.7)
@@ -328,7 +328,7 @@ def main():
             "pass --rejudge to relabel those answers with the current seed_judge prompt."
         )
     print(
-        f"Seed max_completion_tokens: {SEED_MAX_NEW_TOKENS} "
+        f"Seed max_tokens: {SEED_MAX_NEW_TOKENS} "
         "(hidden GPT-OSS reasoning counts against this; empty content usually means the cap was too low)"
     )
     print(f"Output: {SEEDS_PATH.name}")
