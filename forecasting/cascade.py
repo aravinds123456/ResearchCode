@@ -27,7 +27,7 @@ BATCH = DIR / "batch_results.jsonl"
 TREE = DIR / "cascade_tree.jsonl"
 LABELS = DIR / "cascade_labels.jsonl"
 PARTIAL_RUN = DIR / "results" / "cascade_partial_run.json"
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 HALL = "Overall label: Hallucinating"
 RESPONSE_LABELS = ("drop", "correct", "repeat", "depend")
@@ -300,21 +300,72 @@ def history(messages: list[dict], limit: int = 5000) -> str:
     )[-limit:]
 
 
-def parse_judge_label(text: str) -> str:
-    match = LABEL_PATTERN.search(text or "")
+JUDGE_FORMAT_REMINDER = (
+    "FORMAT REMINDER: Your previous reply was not a valid label. "
+    'Return JSON only: {"label": "DROP|CORRECT|REPEAT|DEPEND", "reason": "one sentence"}. '
+    "The label field must be exactly one of those four tokens. "
+    "Do not mention the other tokens in the reason."
+)
+JSON_LABEL_PATTERN = re.compile(
+    r'["\']label["\']\s*:\s*["\'](DROP|CORRECT|REPEAT|DEPEND)["\']',
+    re.I,
+)
+
+
+def parse_judge_label(text: str) -> str | None:
+    """Strict label parse. Returns drop/correct/repeat/depend, or None.
+
+    Accepts an exact token, `Overall label: DEPEND`, or a JSON `"label"` field.
+    Does not scan prose for bare keywords: "does not DEPEND" is not DEPEND.
+    Unparseable text is None, never a silent DROP.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    lowered = raw.lower()
+    if lowered in RESPONSE_LABELS:
+        return lowered
+    if raw.upper() in OUTCOMES:
+        return raw.lower()
+
+    match = LABEL_PATTERN.search(raw)
     if match:
         return match.group(1).lower()
-    blob = (text or "").upper()
-    for label in ("DEPEND", "CORRECT", "REPEAT", "DROP"):
-        if re.search(rf"\b{label}\b", blob):
-            return label.lower()
-    return "drop"
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        data = None
+    if isinstance(data, dict) and data.get("label") is not None:
+        inner = str(data.get("label")).strip()
+        if inner.lower() in RESPONSE_LABELS:
+            return inner.lower()
+        if inner.upper() in OUTCOMES:
+            return inner.lower()
+        return None
+
+    field = JSON_LABEL_PATTERN.search(raw)
+    if field:
+        return field.group(1).lower()
+    return None
+
+
+def parse_status_rank(status: str) -> int:
+    return {"ok": 0, "retried": 1, "failed": 2}.get(status or "ok", 0)
+
+
+def worst_parse_status(statuses: list[str | None]) -> str:
+    worst = "ok"
+    for status in statuses:
+        if parse_status_rank(status or "ok") > parse_status_rank(worst):
+            worst = status or "ok"
+    return worst
 
 
 def normalize_outcome(value: str) -> str:
     raw = (value or "").strip()
     upper = raw.upper()
-    if upper in OUTCOMES:
+    if upper in OUTCOMES or upper == "UNPARSED":
         return upper
     return LEGACY_OUTCOMES.get(raw.lower(), "DROP")
 
@@ -334,8 +385,9 @@ def hint_for(label_or_state: str) -> str:
 
 def derive_branch_outcome(turns: list[dict]) -> dict:
     labels = [parse_judge_label(str(turn.get("label", ""))) for turn in turns]
-    label_counts = {label: labels.count(label) for label in RESPONSE_LABELS}
-    outcome = "DROP"
+    parsed = [label for label in labels if label in RESPONSE_LABELS]
+    label_counts = {label: parsed.count(label) for label in RESPONSE_LABELS}
+    outcome = "UNPARSED" if not parsed else "DROP"
     for label in LABEL_PRECEDENCE:
         if label_counts[label]:
             outcome = BRANCH_OUTCOME_BY_LABEL[label]

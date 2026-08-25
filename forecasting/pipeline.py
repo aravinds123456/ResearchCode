@@ -29,6 +29,7 @@ from cascade import (
     ENABLE_THINKING,
     DOMAINS,
     HALL,
+    JUDGE_FORMAT_REMINDER,
     LABELS,
     OUTCOMES,
     SCHEMA_VERSION,
@@ -54,6 +55,7 @@ from cascade import (
     names,
     normalize_outcome,
     parse_judge_label,
+    worst_parse_status,
     rows,
     sample_seeds,
     sampling_plan,
@@ -151,19 +153,37 @@ def _extract_claim(question: str, answer: str, dry_run: bool) -> tuple[str, list
     return text, entities
 
 
-def _judge_turn(question: str, claim: str, answer: str, messages: list[dict], reply: str, dry_run: bool) -> tuple[str, str]:
+def _label_from_payload(payload) -> tuple[str | None, str]:
+    if isinstance(payload, dict):
+        label = parse_judge_label(str(payload.get("label", "")))
+        return label, str(payload.get("reason", ""))
+    text = str(payload or "").strip()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        data = None
+    if isinstance(data, dict):
+        return _label_from_payload(data)
+    return parse_judge_label(text), text[:300]
+
+
+def _judge_turn(question: str, claim: str, answer: str, messages: list[dict], reply: str, dry_run: bool) -> tuple[str, str, str]:
     if dry_run:
-        return "drop", "dry-run"
-    payload = gpt(fill_prompt(
+        return "drop", "dry-run", "ok"
+    prompt = fill_prompt(
         "turn_label",
         q=question[:1500], claim=claim, a=answer[:2500],
         hist=history(messages), last=reply[:2500],
-    ))
-    if isinstance(payload, dict):
-        label = parse_judge_label(str(payload.get("label", "")))
-        reason = str(payload.get("reason", ""))
-        return label, reason
-    return parse_judge_label(str(payload)), str(payload)[:300]
+    )
+    payload = gpt(prompt)
+    label, reason = _label_from_payload(payload)
+    if label:
+        return label, reason, "ok"
+    payload = gpt(prompt + "\n\n" + JUDGE_FORMAT_REMINDER)
+    label, reason = _label_from_payload(payload)
+    if label:
+        return label, reason, "retried"
+    return "unparsed", reason or str(payload)[:300], "failed"
 
 
 def _maybe_features(args, question: str, answer: str) -> dict:
@@ -326,7 +346,7 @@ def cmd_tree(args) -> None:
                             "record": {
                                 key: saved[key]
                                 for key in saved
-                                if key.startswith(("follow_up_", "future_turn_", "turn_", "rejected_"))
+                                if key.startswith(("follow_up_", "future_turn_", "turn_", "rejected_", "judge_parse_status"))
                             },
                             "turns": turns,
                         }
@@ -337,17 +357,21 @@ def cmd_tree(args) -> None:
                     messages = parent["messages"] + [{"role": "user", "content": ask}]
                     reply = strip_thinking(chat(messages))
                     messages = messages + [{"role": "assistant", "content": reply}]
-                    label, reason = _judge_turn(question, text, first, messages, reply, args.dry_run)
+                    label, reason, parse_status = _judge_turn(question, text, first, messages, reply, args.dry_run)
                     state = display_state(label)
                     record = dict(parent["record"])
                     record.update({
                         f"follow_up_{depth}": ask,
                         f"future_turn_{depth}": reply,
                         f"turn_state_{depth}": state,
-                        f"turn_label_{depth}": label.upper(),
+                        f"turn_label_{depth}": (label or "unparsed").upper(),
                         f"turn_reason_{depth}": reason,
+                        f"judge_parse_status_{depth}": parse_status,
                         f"rejected_{depth}": why,
                     })
+                    record["judge_parse_status"] = worst_parse_status(
+                        [record.get(f"judge_parse_status_{level}") for level in range(1, depth + 1)]
+                    )
                     turns = parent["turns"] + [{
                         "turn": depth, "label": label, "followup_type": cat, "state": state,
                     }]
@@ -407,6 +431,7 @@ def cmd_tree(args) -> None:
                             "final_label": derived["final_label"],
                             "derived_label": derived["branch_outcome"],
                             "label_counts": derived["label_counts"],
+                            "judge_parse_status": record["judge_parse_status"],
                         }, Path(LABELS).exists() or seen)
                     print(f"  {path_key(path):<40} {state} -> {derived['branch_outcome']}")
     if getattr(args, "pilot", False) and not args.dry_run:
@@ -427,7 +452,7 @@ def cmd_label(args) -> None:
             if f"future_turn_{n}" not in row:
                 continue
             label = parse_judge_label(str(row.get(f"turn_label_{n}", row.get(f"turn_state_{n}", ""))))
-            turns.append({"turn": n, "label": label})
+            turns.append({"turn": n, "label": label or "unparsed"})
         derived = derive_branch_outcome(turns)
         outcome = derived["branch_outcome"]
         reason = "derived from per-turn DROP/CORRECT/REPEAT/DEPEND labels"

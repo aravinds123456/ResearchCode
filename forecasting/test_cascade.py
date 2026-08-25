@@ -54,8 +54,22 @@ class LabelTests(unittest.TestCase):
         text = "The model repeats the claim.\nOverall label: DEPEND\n"
         self.assertEqual(parse_judge_label(text), "depend")
 
-    def test_parse_falls_back_to_word_match(self):
-        self.assertEqual(parse_judge_label("I think this is REPEAT not drop"), "repeat")
+    def test_parse_does_not_scan_negated_keywords(self):
+        self.assertIsNone(parse_judge_label(
+            "The response does not DEPEND on the false claim; it CORRECTs the date."
+        ))
+        self.assertIsNone(parse_judge_label(
+            "This is not a REPEAT; the model explicitly corrected itself."
+        ))
+        self.assertIsNone(parse_judge_label(
+            "The model drops the claim entirely and does not depend on it."
+        ))
+        self.assertIsNone(parse_judge_label("I could not determine a label."))
+
+    def test_parse_accepts_exact_token_and_json_label(self):
+        self.assertEqual(parse_judge_label("DEPEND"), "depend")
+        self.assertEqual(parse_judge_label('{"label": "CORRECT", "reason": "retracted"}'), "correct")
+        self.assertEqual(parse_judge_label("Overall label: DROP"), "drop")
 
     def test_display_states_match_the_formatted_pdf(self):
         self.assertEqual(display_state("depend"), "persisted_active")
@@ -76,6 +90,10 @@ class LabelTests(unittest.TestCase):
     def test_all_drop_is_drop(self):
         turns = [{"turn": n, "label": "drop"} for n in range(1, 6)]
         self.assertEqual(derive_branch_outcome(turns)["branch_outcome"], "DROP")
+
+    def test_unparsed_turns_are_not_silent_drop(self):
+        turns = [{"turn": 1, "label": "unparsed"}]
+        self.assertEqual(derive_branch_outcome(turns)["branch_outcome"], "UNPARSED")
 
 
 class DesignDefaultTests(unittest.TestCase):
@@ -242,6 +260,7 @@ class PartialRunTests(unittest.TestCase):
             self.assertTrue(all(row["branch_outcome"] == "DROP" for row in lines))
             self.assertTrue(all(row.get("domain") in {"research", "legal", "medical"} for row in lines))
             self.assertTrue(all("turn_label_1" in row for row in lines))
+            self.assertTrue(all(row.get("judge_parse_status") == "ok" for row in lines))
             self.assertTrue(all("turn_label_2" in row for row in leaves))
             self.assertTrue(all(row.get("prompt_pack_version") == 1 for row in lines))
             self.assertTrue(all("seed_judge.v3" in row.get("prompt_ids", {}).values() for row in lines))
@@ -315,6 +334,53 @@ class ThinkingOffTests(unittest.TestCase):
         runtime.build_model_inputs(original)
         self.assertEqual(original[0]["content"], "What is compound X47?")
         self.assertIn("/no_think", runtime.tokenizer.messages[0]["content"])
+
+
+class JudgeRetryTests(unittest.TestCase):
+    def test_retries_once_then_stores_failed(self):
+        import pipeline
+
+        calls = []
+
+        def fake_gpt(prompt, as_json=True):
+            calls.append(prompt)
+            if "FORMAT REMINDER" in prompt:
+                return "I could not determine a label."
+            return "The response does not DEPEND on the false claim; it CORRECTs the date."
+
+        previous = pipeline.gpt
+        pipeline.gpt = fake_gpt
+        self.addCleanup(lambda: setattr(pipeline, "gpt", previous))
+        label, reason, status = pipeline._judge_turn(
+            "q", "claim", "answer",
+            [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}],
+            "later text",
+            dry_run=False,
+        )
+        self.assertEqual(status, "failed")
+        self.assertEqual(label, "unparsed")
+        self.assertEqual(len(calls), 2)
+        self.assertIn("FORMAT REMINDER", calls[1])
+
+    def test_retry_can_recover_a_strict_label(self):
+        import pipeline
+
+        def fake_gpt(prompt, as_json=True):
+            if "FORMAT REMINDER" in prompt:
+                return {"label": "CORRECT", "reason": "retracted the date"}
+            return "This is not a REPEAT; the model explicitly corrected itself."
+
+        previous = pipeline.gpt
+        pipeline.gpt = fake_gpt
+        self.addCleanup(lambda: setattr(pipeline, "gpt", previous))
+        label, reason, status = pipeline._judge_turn(
+            "q", "claim", "answer",
+            [{"role": "user", "content": "q"}],
+            "later text",
+            dry_run=False,
+        )
+        self.assertEqual(label, "correct")
+        self.assertEqual(status, "retried")
 
 
 class AlgoverseWorkflowTests(unittest.TestCase):

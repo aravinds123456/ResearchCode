@@ -99,6 +99,11 @@ def records_from_partial(data: dict) -> list[dict]:
     return out
 
 
+def parsable_records(records: list[dict]) -> list[dict]:
+    """Drop judge failures so unparseable output cannot inflate DROP or DEPEND."""
+    return [rec for rec in records if rec.get("judge_parse_status", "ok") != "failed"]
+
+
 def records_from_live(tree_path: Path, labels_path: Path) -> list[dict]:
     labels = {r["branch_id"]: r for r in rows(labels_path)}
     out = []
@@ -110,6 +115,8 @@ def records_from_live(tree_path: Path, labels_path: Path) -> list[dict]:
         rec = dict(row)
         rec["final_label"] = outcome
         rec["domain"] = rec.get("domain") or domain_of(rec)
+        if label_row.get("judge_parse_status"):
+            rec["judge_parse_status"] = label_row["judge_parse_status"]
         out.append(rec)
     return out
 
@@ -399,18 +406,19 @@ def pdf_safe(text: str) -> str:
 
 
 def render_html(records: list[dict], meta: dict, path: Path) -> None:
-    by_cat = count_table(records, "follow_up_mode")
-    by_dom = count_table(records, "domain")
+    scored = parsable_records(records)
+    by_cat = count_table(scored, "follow_up_mode")
+    by_dom = count_table(scored, "domain")
     n_turns = detected_turns(records)
     complete = completeness(records, meta.get("planned_seeds", DEFAULT_MAX_SEEDS))
     dynamics = turn_dynamics(records)
-    tests = pairwise_recovery(records)
-    paired_correct = mcnemar_pairs(records, recovery_mode(records_for_paired_tests(records)), is_correct, "CORRECT")
-    paired_entrench = mcnemar_pairs(records, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
-    findings = headline_findings(records)
-    t1 = turn1_forecast(records)
-    activity = activity_rates(records)
-    sx = strategy_domain_counts(records)
+    tests = pairwise_recovery(scored)
+    paired_correct = mcnemar_pairs(scored, recovery_mode(records_for_paired_tests(scored)), is_correct, "CORRECT")
+    paired_entrench = mcnemar_pairs(scored, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
+    findings = headline_findings(scored)
+    t1 = turn1_forecast(scored)
+    activity = activity_rates(scored)
+    sx = strategy_domain_counts(scored)
     domain_mix = ", ".join(f"{k} {v}" for k, v in sorted(complete["seed_domains"].items()))
 
     def table_html(table, order):
@@ -727,8 +735,13 @@ def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_p
             raise SystemExit(f"No labeled branches in {labels_path} or {tree_path}. Pass --from-partial to report the captured run.")
         print(f"Source: {tree_path.name} + {labels_path.name}")
 
-    first = [rec for rec in records if rec.get("tree_depth") == 1]
-    leaves = [rec for rec in records if rec.get("node_kind") == "leaf" or rec.get("tree_depth") == 2]
+    failed = [rec for rec in records if rec.get("judge_parse_status") == "failed"]
+    scored = parsable_records(records)
+    if failed:
+        print(f"Excluding {len(failed)} parse failures from outcome tables (judge_parse_status=failed).")
+
+    first = [rec for rec in scored if rec.get("tree_depth") == 1]
+    leaves = [rec for rec in scored if rec.get("node_kind") == "leaf" or rec.get("tree_depth") == 2]
     if first:
         print_table("First-move outcomes (level 1)", count_table(first, "follow_up_mode"), list(CATS))
     if leaves:
@@ -740,10 +753,10 @@ def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_p
     if not first:
         print_table(
             "Outcome by follow-up strategy (Wilson 95% CI)",
-            count_table(records, "follow_up_mode"),
-            expected_modes(records),
+            count_table(scored, "follow_up_mode"),
+            expected_modes(scored),
         )
-    print_table("Outcome by domain", count_table(records, "domain"), list(DOMAIN_ORDER))
+    print_table("Outcome by domain", count_table(scored, "domain"), list(DOMAIN_ORDER))
 
     complete = completeness(records, meta.get("planned_seeds", DEFAULT_MAX_SEEDS))
     print(
@@ -757,13 +770,13 @@ def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_p
             print(f"  q{qid}: missing {', '.join(missing)}")
 
     print("\nHeadline findings:")
-    for item in headline_findings(records):
+    for item in headline_findings(scored):
         print(f"  - {item}")
 
     print("\nSame-seed McNemar (holds the claim fixed):")
     for left, right, kind, a_only, b_only, both, neither, chi, p in (
-        mcnemar_pairs(records, recovery_mode(records_for_paired_tests(records)), is_correct, "CORRECT")
-        + mcnemar_pairs(records, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
+        mcnemar_pairs(scored, recovery_mode(records_for_paired_tests(scored)), is_correct, "CORRECT")
+        + mcnemar_pairs(scored, "dependency-seeking", is_entrench, "REPEAT+DEPEND")
     ):
         print(
             f"  {left} vs {right:<20} {kind:<14} "
@@ -772,7 +785,7 @@ def render_report(from_partial: bool, tree_path: Path, labels_path: Path, html_p
         )
 
     print("\nUnpaired chi-square (weaker, does not hold seed fixed):")
-    for left, right, kind, chi, p in pairwise_recovery(records):
+    for left, right, kind, chi, p in pairwise_recovery(scored):
         print(f"  {left} vs {right:<20} {kind:<14} chi2={chi:.2f} p={p:.4f}")
 
     print("\nTurn-1 state -> branch outcome:")
