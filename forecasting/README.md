@@ -103,7 +103,7 @@ python maincode.py
 
 ```bash
 pixi run forecast-test
-# or: python -m unittest forecasting.test_pipeline forecasting.test_cascade
+# or: python -m unittest forecasting.test_pipeline forecasting.test_cascade forecasting.test_runtime
 python forecasting/pipeline.py tree --dry-run --max-seeds 2
 ```
 
@@ -149,11 +149,22 @@ Do not point `--seeds` at a Qwen file if the tree is GPT-OSS. Do not mix the old
 | `AZURE_OPENAI_ENDPOINT` | — | Azure resource URL |
 | `AZURE_OPENAI_API_KEY` | — | Azure key |
 | `AZURE_OPENAI_DEPLOYMENT` | `TEST_MODEL` | Override deployment name |
+| `AZURE_REASONING_EFFORT` | `low` | Azure GPT-OSS reasoning effort (`low` / `medium` / `high`; empty disables) |
+| `AZURE_SEND_TEMPERATURE` | unset | Set `1` to send `TEMPERATURE`; GPT-OSS often rejects it |
 | `OPENAI_LABEL_MODEL` | `gpt-5-mini` | Judge + follow-up drafts |
 | `MAX_QUESTIONS` | all HalluHard items | Cap seed generation |
 | `MAX_EXAMPLES` | `100` | Seeds in the tree |
 | `NUM_TURNS` | `2` | Tree depth |
-| `MAX_NEW_TOKENS` | `400` | Tree uses `max(256, this/2)` per follow-up |
+| `SEED_MAX_NEW_TOKENS` | `2048` | Seed `max_completion_tokens` (hidden reasoning counts against this) |
+| `MAX_NEW_TOKENS` | `2048` | Tree follow-ups use `max(1024, this)` |
+
+## Empty generation, skipping
+
+Azure GPT-OSS is a reasoning model. Hidden reasoning tokens count against the completion cap. If that cap is too small (the old default was 300), Azure returns `finish_reason=length` with empty `message.content`, and seed generation prints `empty generation, skipping`.
+
+This checkout uses `max_completion_tokens`, `reasoning_effort=low`, a 2048 default, and one retry at 4096. The skip line now includes that token cap. stderr also prints `finish_reason` and `reasoning_tokens` when content is empty.
+
+Pull, set `AZURE_OPENAI_DEPLOYMENT` to the portal name, then re-run **only** `--pilot` seeds. Do not start the tree until `forecasting/seeds_gpt-oss-20b.jsonl` has judged rows.
 
 ## HalluHard vs this folder
 

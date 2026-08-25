@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 
 from cascade import (
@@ -15,7 +16,9 @@ from cascade import (
 )
 
 GEMINI_RETRIES = env_int("GEMINI_RETRIES", 5)
-MAX_NEW_TOKENS = env_int("MAX_NEW_TOKENS", 400)
+# Hidden GPT-OSS reasoning tokens count against this cap. 400 often yields
+# empty message.content (finish_reason=length) and "empty generation, skipping".
+MAX_NEW_TOKENS = env_int("MAX_NEW_TOKENS", 2048)
 JUDGE_MODEL_NAME = env_str("JUDGE_MODEL", "gemini-2.5-flash")
 OPENAI_MODEL = env_str("OPENAI_LABEL_MODEL", DEFAULT_OPENAI_JUDGE)
 OPENAI_REASONING_EFFORT = env_str("OPENAI_REASONING_EFFORT", "minimal")
@@ -150,12 +153,27 @@ def generate_response(messages, max_new_tokens: int | None = None) -> str:
     return strip_thinking(tokenizer.decode(generated_tokens, skip_special_tokens=True))
 
 
+def followup_max_new_tokens() -> int:
+    """Token budget for tree follow-ups. Hidden GPT-OSS reasoning counts against this."""
+    override = os.environ.get("FOLLOWUP_MAX_NEW_TOKENS", "").strip()
+    if override:
+        return int(override)
+    return max(1024, MAX_NEW_TOKENS)
+
+
+def empty_retry_tokens(current: int) -> int:
+    override = os.environ.get("AZURE_EMPTY_RETRY_TOKENS", "").strip()
+    if override:
+        return int(override)
+    return max(int(current) * 2, 4096)
+
+
 def load_qwen(name: str):
     """Local HuggingFace chat callable (Qwen and other HF models)."""
     init_model(name)
 
     def chat(messages):
-        return generate_response(messages, max_new_tokens=max(256, MAX_NEW_TOKENS // 2))
+        return generate_response(messages, max_new_tokens=followup_max_new_tokens())
 
     print(f"Loaded {name} on {device}")
     return chat
@@ -238,6 +256,235 @@ def deployment_missing_message(deployment: str, found: list[str] | None = None) 
     )
 
 
+def _attr(obj, name, default=None):
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def content_to_text(content) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str) and item.strip():
+                parts.append(item.strip())
+            elif isinstance(item, dict):
+                text = item.get("text") or item.get("content") or ""
+                if text:
+                    parts.append(str(text).strip())
+            else:
+                text = getattr(item, "text", None) or getattr(item, "content", None)
+                if text:
+                    parts.append(str(text).strip())
+        return "\n".join(part for part in parts if part).strip()
+    return str(content).strip()
+
+
+def extract_visible_text(message) -> str:
+    """Public assistant text only. Hidden GPT-OSS reasoning is not a visible answer."""
+    return content_to_text(_attr(message, "content"))
+
+
+def extract_reasoning_text(message) -> str:
+    for key in ("reasoning_content", "reasoning"):
+        value = _attr(message, key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def describe_completion(choice, usage) -> str:
+    finish = _attr(choice, "finish_reason") or "unknown"
+    completion = _attr(usage, "completion_tokens")
+    details = _attr(usage, "completion_tokens_details")
+    reasoning = _attr(details, "reasoning_tokens") if details is not None else None
+    parts = [f"finish_reason={finish}"]
+    if completion is not None:
+        parts.append(f"completion_tokens={completion}")
+    if reasoning is not None:
+        parts.append(f"reasoning_tokens={reasoning}")
+    return ", ".join(parts)
+
+
+def azure_reasoning_effort() -> str:
+    return env_str("AZURE_REASONING_EFFORT", "low")
+
+
+def azure_send_temperature() -> bool:
+    return env_str("AZURE_SEND_TEMPERATURE", "").lower() in {"1", "true", "yes", "on"}
+
+
+def azure_use_reasoning_fallback() -> bool:
+    return env_str("AZURE_USE_REASONING_FALLBACK", "1").lower() not in {"0", "false", "no", "off"}
+
+
+def azure_create_kwargs(
+    deployment: str,
+    messages,
+    max_new_tokens: int,
+    *,
+    temperature: float | None = None,
+    send_temperature: bool = False,
+    reasoning_effort: str | None = None,
+) -> dict:
+    kwargs = {
+        "model": deployment,
+        "messages": messages,
+        "max_completion_tokens": int(max_new_tokens),
+    }
+    if send_temperature and temperature is not None:
+        kwargs["temperature"] = temperature
+    effort = (reasoning_effort or "").strip()
+    if effort:
+        kwargs["reasoning_effort"] = effort
+    return kwargs
+
+
+def is_unsupported_parameter(error: BaseException, param: str) -> bool:
+    text = str(error).lower()
+    if param.lower() not in text:
+        return False
+    markers = (
+        "unsupported",
+        "invalid",
+        "unknown",
+        "not supported",
+        "unexpected",
+        "does not support",
+    )
+    return any(marker in text for marker in markers)
+
+
+def azure_chat_create(client, kwargs: dict):
+    """Create a chat completion, stripping parameters Azure GPT-OSS rejects."""
+    pending = dict(kwargs)
+    stripped: set[str] = set()
+    extra_body_attempted = False
+    while True:
+        try:
+            return client.chat.completions.create(**pending)
+        except TypeError:
+            if extra_body_attempted or "reasoning_effort" not in pending:
+                raise
+            extra_body_attempted = True
+            effort = pending.pop("reasoning_effort")
+            extra = dict(pending.get("extra_body") or {})
+            extra["reasoning_effort"] = effort
+            pending["extra_body"] = extra
+        except Exception as error:
+            if is_deployment_missing(error):
+                raise SystemExit(deployment_missing_message(str(pending.get("model", "")))) from error
+            if "temperature" in pending and "temperature" not in stripped and is_unsupported_parameter(
+                error, "temperature"
+            ):
+                pending.pop("temperature", None)
+                stripped.add("temperature")
+                continue
+            if (
+                "reasoning_effort" in pending
+                and "reasoning_effort" not in stripped
+                and is_unsupported_parameter(error, "reasoning_effort")
+            ):
+                pending.pop("reasoning_effort", None)
+                stripped.add("reasoning_effort")
+                continue
+            extra = pending.get("extra_body")
+            if (
+                isinstance(extra, dict)
+                and "reasoning_effort" in extra
+                and "reasoning_effort" not in stripped
+                and is_unsupported_parameter(error, "reasoning_effort")
+            ):
+                extra.pop("reasoning_effort", None)
+                stripped.add("reasoning_effort")
+                continue
+            if "max_completion_tokens" in pending and "max_completion_tokens" not in stripped and (
+                is_unsupported_parameter(error, "max_completion_tokens")
+                or "max_completion_tokens" in str(error).lower()
+            ):
+                tokens = pending.pop("max_completion_tokens")
+                pending["max_tokens"] = tokens
+                stripped.add("max_completion_tokens")
+                continue
+            raise
+
+
+def _azure_answer_once(client, kwargs: dict):
+    response = azure_chat_create(client, kwargs)
+    choice = response.choices[0] if getattr(response, "choices", None) else None
+    message = _attr(choice, "message") if choice is not None else None
+    usage = _attr(response, "usage")
+    visible = extract_visible_text(message) if message is not None else ""
+    return choice, message, usage, visible
+
+
+def azure_answer_text(
+    client,
+    messages,
+    max_new_tokens: int,
+    *,
+    temperature: float = 0.0,
+    model_name: str | None = None,
+    send_temperature: bool | None = None,
+    reasoning_effort: str | None = None,
+    use_reasoning_fallback: bool | None = None,
+) -> str:
+    """One Azure completion with an empty-content retry. Does not call Azure itself except via client."""
+    name = model_name or env_str("TEST_MODEL", DEFAULT_TEST_MODEL)
+    deployment = azure_deployment(name)
+    if send_temperature is None:
+        send_temperature = azure_send_temperature()
+    if reasoning_effort is None:
+        reasoning_effort = azure_reasoning_effort()
+    if use_reasoning_fallback is None:
+        use_reasoning_fallback = azure_use_reasoning_fallback()
+    kwargs = azure_create_kwargs(
+        deployment,
+        messages,
+        max_new_tokens,
+        temperature=temperature,
+        send_temperature=send_temperature,
+        reasoning_effort=reasoning_effort,
+    )
+    choice, message, usage, visible = _azure_answer_once(client, kwargs)
+    if visible:
+        return strip_thinking(visible)
+
+    why = describe_completion(choice, usage)
+    retry_tokens = empty_retry_tokens(max_new_tokens)
+    print(
+        f"empty assistant content ({why}); retrying with max_completion_tokens={retry_tokens}",
+        file=sys.stderr,
+    )
+    retry_kwargs = dict(kwargs)
+    if "max_completion_tokens" in retry_kwargs:
+        retry_kwargs["max_completion_tokens"] = retry_tokens
+    else:
+        retry_kwargs["max_tokens"] = retry_tokens
+    choice, message, usage, visible = _azure_answer_once(client, retry_kwargs)
+    if visible:
+        return strip_thinking(visible)
+
+    why = describe_completion(choice, usage)
+    reasoning = extract_reasoning_text(message) if message is not None else ""
+    if reasoning and use_reasoning_fallback:
+        print(
+            f"empty assistant content after retry ({why}); "
+            "using reasoning_content as last resort "
+            "(hidden chain-of-thought is not a normal visible answer)",
+            file=sys.stderr,
+        )
+        return strip_thinking(reasoning)
+    print(f"empty assistant content after retry ({why})", file=sys.stderr)
+    return ""
+
+
 def make_azure_client():
     from openai import AzureOpenAI, OpenAI
 
@@ -265,31 +512,18 @@ def answer_chat(
 ) -> str:
     """One answering-model completion: Azure GPT-OSS or local HF."""
     name = model_name or env_str("TEST_MODEL", DEFAULT_TEST_MODEL)
-    tokens = max_new_tokens or max(256, MAX_NEW_TOKENS // 2)
+    tokens = max_new_tokens if max_new_tokens is not None else followup_max_new_tokens()
     if not uses_azure_answer(name):
         init_model(name)
         return generate_response(messages, max_new_tokens=tokens)
 
-    client = make_azure_client()
-    deployment = azure_deployment(name)
-    kwargs = {"model": deployment, "messages": messages, "temperature": temperature}
-    try:
-        try:
-            response = client.chat.completions.create(**kwargs, max_tokens=tokens)
-        except Exception as error:
-            if is_deployment_missing(error):
-                raise SystemExit(deployment_missing_message(deployment)) from error
-            if "max_token" not in str(error).lower() and "unsupported" not in str(error).lower():
-                raise
-            response = client.chat.completions.create(**kwargs, max_completion_tokens=tokens)
-    except Exception as error:
-        if is_deployment_missing(error):
-            raise SystemExit(deployment_missing_message(deployment)) from error
-        raise
-    text = ""
-    if response.choices:
-        text = response.choices[0].message.content or ""
-    return strip_thinking(text)
+    return azure_answer_text(
+        make_azure_client(),
+        messages,
+        tokens,
+        temperature=temperature,
+        model_name=name,
+    )
 
 
 def load_answer_model(name: str):
@@ -297,11 +531,15 @@ def load_answer_model(name: str):
     if uses_azure_answer(name):
         endpoint, _ = azure_credentials()
         print(f"Answer model: {azure_deployment(name)} via Azure ({endpoint or 'set AZURE_OPENAI_ENDPOINT'})")
+        print(
+            f"Follow-up max_completion_tokens={followup_max_new_tokens()} "
+            f"reasoning_effort={azure_reasoning_effort() or 'off'}"
+        )
 
         def chat(messages):
             return answer_chat(
                 messages,
-                max_new_tokens=max(256, MAX_NEW_TOKENS // 2),
+                max_new_tokens=followup_max_new_tokens(),
                 temperature=0.0,
                 model_name=name,
             )

@@ -49,7 +49,8 @@ from prompts_pack import (
 
 MODEL_NAME = env_str("TEST_MODEL", env_str("QWEN_MODEL", DEFAULT_TEST_MODEL))
 SEED_SCHEMA_VERSION = 3
-SEED_MAX_NEW_TOKENS = env_int("SEED_MAX_NEW_TOKENS", 300)
+# GPT-OSS hidden reasoning counts against this. 300 often returns empty content.
+SEED_MAX_NEW_TOKENS = env_int("SEED_MAX_NEW_TOKENS", 2048)
 MAX_QUESTIONS = env_int("MAX_QUESTIONS", 0)
 SAMPLES_PER_QUESTION = env_int("SAMPLES_PER_QUESTION", 1)
 TEMPERATURE = env_float("TEMPERATURE", 0.7)
@@ -208,6 +209,8 @@ def main():
     from runtime import (
         active_judge_model,
         azure_deployment,
+        azure_reasoning_effort,
+        azure_send_temperature,
         judge_backend,
         setup_gemini,
         uses_azure_answer,
@@ -216,11 +219,20 @@ def main():
     print(f"Test model: {MODEL_NAME}")
     if uses_azure_answer(MODEL_NAME):
         print(f"Azure deployment: {azure_deployment(MODEL_NAME)} (override with AZURE_OPENAI_DEPLOYMENT)")
+        print(f"Azure reasoning_effort: {azure_reasoning_effort() or 'off'}")
+        if azure_send_temperature():
+            print(f"Azure temperature: {TEMPERATURE}")
+        else:
+            print("Azure temperature: omitted (GPT-OSS often rejects it; set AZURE_SEND_TEMPERATURE=1 to sample)")
     print(f"Judge model: {active_judge_model()}")
     print(f"Thinking: {'on' if ENABLE_THINKING else 'off'}")
     print(f"Prompt pack: v{prompt_pack_version()} ids={prompt_ids()}")
     print("Workflow: debug prompts on ~10 examples (--pilot), then scale.")
     print(f"Questions: {len(question_items)} HalluHard items, {len(pending)} pending generations")
+    print(
+        f"Seed max_completion_tokens: {SEED_MAX_NEW_TOKENS} "
+        "(hidden GPT-OSS reasoning counts against this; empty content usually means the cap was too low)"
+    )
     print(f"Output: {SEEDS_PATH.name}")
     log_experiment(
         "seed_pilot" if pilot else "seed_full",
@@ -245,7 +257,12 @@ def main():
         answer, features, rng_seed = generate_seed_answer(question, question_number, sample_index)
         progress = f"[{index}/{len(pending)}] q{question_number}#{sample_index}"
         if not answer:
-            print(f"{progress}: empty generation, skipping")
+            print(
+                f"{progress}: empty generation, skipping "
+                f"(no visible assistant text after retry; GPT-OSS spent the token budget on "
+                f"hidden reasoning or returned an empty message. "
+                f"SEED_MAX_NEW_TOKENS={SEED_MAX_NEW_TOKENS})"
+            )
             continue
         seen_answers = answers_by_question.setdefault(question_number, set())
         is_duplicate = answer in seen_answers

@@ -48,7 +48,7 @@ fpdf2 = "*"
 # Root-level wrappers (use --task to specify which task)
 report = "python report.py"
 forecast-report = "python forecasting/pipeline.py report --from-partial"
-forecast-test = "python -m unittest forecasting.test_pipeline forecasting.test_cascade"
+forecast-test = "python -m unittest forecasting.test_pipeline forecasting.test_cascade forecasting.test_runtime"
 forecast-tree = "python forecasting/pipeline.py tree --pilot --resume"
 
 # Paper authors task
