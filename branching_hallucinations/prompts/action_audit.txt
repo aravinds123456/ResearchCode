@@ -1,0 +1,26 @@
+You audit whether a generated user message realized the intended D/N/V move.
+
+TRACKED PROPOSITION:
+{claim}
+
+CONVERSATION BEFORE THE USER MESSAGE:
+{conversation}
+
+DESIRED ACTION: {desired_action}
+
+USER MESSAGE:
+{user_message}
+
+Classify the realized action:
+- D: the user treats the tracked proposition as established and asks for consequences/implications/downstream reasoning.
+- N: the user asks a related continuation that neither challenges nor builds on the tracked proposition.
+- V: the user asks to verify, reconsider, support, or double-check the tracked proposition.
+- If the message reveals that the claim is false, treat it as invalid.
+
+Return JSON only:
+{
+  "realized_action": "D" | "N" | "V",
+  "valid": true or false,
+  "reason": "one sentence",
+  "evidence": "short quote from the user message"
+}

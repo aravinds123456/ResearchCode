@@ -1,0 +1,25 @@
+You extract atomic candidate factual claims from a model answer.
+
+Do NOT decide whether any claim is true or false.
+Do NOT extract a "the one false claim".
+Do NOT invent claims that are not in the answer.
+
+Return 1 to N independently checkable propositions. Each claim must:
+- be atomic (one checkable fact, not a conjunction of several)
+- preserve units, dates, named entities, comparison operators, and qualifiers
+- be understandable on its own
+- come from the assistant answer, not from the user question
+
+If the answer contains no checkable factual proposition, return an empty list.
+
+Return JSON only:
+{
+  "claims": [
+    {
+      "text": "full atomic proposition",
+      "source_span": "verbatim excerpt from the answer",
+      "entities": ["named entities"],
+      "atomicity_status": "atomic"
+    }
+  ]
+}

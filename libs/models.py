@@ -5,6 +5,7 @@ This makes it easy to use predefined model configurations across all tasks.
 """
 
 from libs.sampler.openai_sampler import ResponsesSampler
+from libs.sampler.azure_openai_sampler import AzureOpenAISampler
 from libs.sampler.deepseek_sampler import DeepSeekSampler
 from libs.sampler.anthropic_sampler import AnthropicSampler
 from libs.sampler.kimi_sampler import KimiSampler
@@ -38,6 +39,10 @@ def get_sampler(model_name: str):
         )
 
     config = MODEL_REGISTRY[model_name]
+    backend = config.get("backend")
+    if backend == "azure" or model_name.startswith("azure-"):
+        sampler_kwargs = {k: v for k, v in config.items() if k != "backend"}
+        return AzureOpenAISampler(**sampler_kwargs)
     if model_name.startswith("deepseek-"):
         return DeepSeekSampler(**config)
     elif model_name.startswith("claude-"):
@@ -73,6 +78,45 @@ def get_sampler(model_name: str):
 # Model configurations registry
 # Each entry maps a model name to sampler configuration parameters
 MODEL_REGISTRY = {
+    # Azure-backed models for the branching experiment and HalluHard grounding.
+    # These do not require OPENAI_API_KEY. Serper remains a separate credential.
+    "azure-gpt-oss-20b": {
+        "backend": "azure",
+        "model": "gpt-oss-20b",
+        "reasoning_effort": "low",
+        "max_tokens": 32768,
+        "websearch": False,
+    },
+    "azure-gpt-5-mini": {
+        "backend": "azure",
+        "model": "gpt-5-mini",
+        "reasoning_effort": "minimal",
+        "websearch": False,
+    },
+    "azure-gpt-5-mini-minimal": {
+        "backend": "azure",
+        "model": "gpt-5-mini",
+        "reasoning_effort": "minimal",
+        "websearch": False,
+    },
+    "azure-gpt-5-mini-low": {
+        "backend": "azure",
+        "model": "gpt-5-mini",
+        "reasoning_effort": "low",
+        "websearch": False,
+    },
+    "azure-gpt-5-mini-medium": {
+        "backend": "azure",
+        "model": "gpt-5-mini",
+        "reasoning_effort": "medium",
+        "websearch": False,
+    },
+    "azure-gpt-5-mini-high": {
+        "backend": "azure",
+        "model": "gpt-5-mini",
+        "reasoning_effort": "high",
+        "websearch": False,
+    },
     # GPT-5 variants without reasoning
     "gpt-5": {
         "model": "gpt-5-chat-latest",

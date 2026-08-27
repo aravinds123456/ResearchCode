@@ -6,7 +6,7 @@ __pycache__/
 .pixi/
 .vscode/
 
-# Results directories in each task folder - ignore data files but keep directories
+# Generated HalluHard evals — keep directory placeholders
 **/results/*.jsonl
 **/results/*.json
 !**/results/.gitkeep
@@ -17,6 +17,6 @@ __pycache__/
 *.html
 .DS_Store
 
-!forecasting/results/cascade_partial_run.json
-!forecasting/results/cascade_report.html
-!forecasting/results/cascade_report.pdf
+# Branching Hallucinations run artifacts
+runs/*
+!runs/.gitkeep

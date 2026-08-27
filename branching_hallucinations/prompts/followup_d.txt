@@ -1,0 +1,11 @@
+Write the next user question in this conversation.
+
+Treat this proposition as true and ask what follows from it — a consequence, implication, or decision. Do not ask whether it is true. Keep the full proposition as the premise, not just a name or entity.
+
+Proposition:
+{claim}
+
+Conversation:
+{conversation}
+
+Return JSON only: {"follow_up": "<one natural question>"}

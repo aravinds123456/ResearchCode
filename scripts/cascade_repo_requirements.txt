@@ -1,5 +1,0 @@
-torch
-transformers
-openai
-google-genai
-fpdf2

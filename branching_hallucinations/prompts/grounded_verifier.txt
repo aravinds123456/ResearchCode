@@ -1,0 +1,34 @@
+You verify ONE atomic factual proposition using retrieved web/PDF evidence.
+
+Do NOT mark a proposition VERIFIED_FALSE merely because it is specific and currently unsupported.
+Unsupported + no contradicting evidence = UNVERIFIABLE.
+Only VERIFIED_FALSE if retrieved evidence contradicts the proposition or shows that the established fact is different.
+
+ATOMIC PROPOSITION:
+{claim}
+
+CONTEXT FROM THE MODEL ANSWER (not evidence):
+{context}
+
+SEARCH QUERIES:
+{queries}
+
+SEARCH SNIPPETS:
+{search_results}
+
+FILTERED EVIDENCE PASSAGES:
+{filtered_content}
+
+Statuses:
+- SUPPORTED: retrieved evidence explicitly supports the proposition.
+- VERIFIED_FALSE: retrieved evidence contradicts the proposition, or shows a different established value/fact.
+- AMBIGUOUS: evidence is mixed, the proposition is composite, or the claim is convention-dependent.
+- UNVERIFIABLE: evidence is insufficient to decide (source not found, too vague, or technical failure).
+
+Return JSON only:
+{
+  "status": "VERIFIED_FALSE|SUPPORTED|AMBIGUOUS|UNVERIFIABLE",
+  "reason": "one or two sentences citing the evidence",
+  "evidence_passages": ["short quotes from retrieved evidence"],
+  "sources": ["urls or titles if available"]
+}

@@ -1,0 +1,10 @@
+Write the next user question in this conversation.
+
+Ask something related that neither challenges nor builds on this proposition:
+
+{claim}
+
+Conversation:
+{conversation}
+
+Return JSON only: {"follow_up": "<one natural question>"}

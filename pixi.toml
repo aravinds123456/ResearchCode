@@ -1,7 +1,7 @@
 [workspace]
-name = "create-hallucinations"
+name = "branching-hallucinations"
 version = "0.1.0"
-description = "HalluHard: A Hard Multi-Turn Hallucination Benchmark"
+description = "Branching Hallucinations: verified-false seed → D/N/V tree → DROP/RETRACT/REPEAT/DEPEND"
 authors = ["HalluHard Team"]
 channels = ["conda-forge"]
 platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
@@ -41,32 +41,19 @@ selenium = ">=4.36.0, <5"
 trafilatura = ">=2.0.0, <3"
 pymupdf4llm = ">=0.2.2, <0.3"
 google-genai = "*"
-fpdf2 = "*"
+tomli = ">=2.0.0, <3"
 
 [tasks]
 
-# Root-level wrappers (use --task to specify which task)
-report = "python report.py"
-forecast-report = "python forecasting/pipeline.py report --from-partial"
-forecast-test = "python -m unittest forecasting.test_pipeline forecasting.test_cascade forecasting.test_runtime"
-forecast-tree = "python forecasting/pipeline.py tree --pilot --resume"
+report = "python halluhard/report.py"
+branching-test = "python -m unittest discover -s tests/branching_hallucinations -p 'test_*.py'"
+branching-pilot-init = "python -m branching_hallucinations init-run --config configs/branching_pilot.toml --run runs/pilot"
 
-# Paper authors task
-paper-authors-data = "python -m paper_authors.data_fetcher"
-paper-authors-generate = "python -m paper_authors.generate_responses"
-
-# Research questions task
-research-questions-data = "python -m research_questions.data_fetcher"
-research-questions-generate = "python -m research_questions.generate_responses"
-
-# Coding task
-coding-data = "python -m coding.data_fetcher"
-coding-generate = "python -m coding.generate_responses"
-
-# Legal cases task
-legal-cases-data = "python -m legal_cases.data_fetcher"
-legal-cases-generate = "python -m legal_cases.generate_responses"
-
-# Medical guidelines task
-medical-guidelines-data = "python -m medical_guidelines.data_fetcher"
-medical-guidelines-generate = "python -m medical_guidelines.generate_responses"
+research-questions-data = "python -m halluhard.research_questions.data_fetcher"
+research-questions-generate = "python -m halluhard.research_questions.generate_responses"
+coding-data = "python -m halluhard.coding.data_fetcher"
+coding-generate = "python -m halluhard.coding.generate_responses"
+legal-cases-data = "python -m halluhard.legal_cases.data_fetcher"
+legal-cases-generate = "python -m halluhard.legal_cases.generate_responses"
+medical-guidelines-data = "python -m halluhard.medical_guidelines.data_fetcher"
+medical-guidelines-generate = "python -m halluhard.medical_guidelines.generate_responses"
