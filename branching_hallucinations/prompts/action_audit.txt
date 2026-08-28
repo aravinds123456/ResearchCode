@@ -12,8 +12,8 @@ USER MESSAGE:
 {user_message}
 
 Classify the realized action:
-- D: the user treats the tracked proposition as established and asks for consequences/implications/downstream reasoning.
-- N: the user asks a related continuation that neither challenges nor builds on the tracked proposition.
+- D: the user treats the tracked proposition as established, OR makes its distinctive mechanism/procedure/entity causally relevant (including how to implement, monitor, tune, or choose parameters of it). The user does not need to restate the claim.
+- N: the user asks a same-domain continuation that a specialist could answer even if the tracked proposition had never been said. It does not make the proposition or its distinctive particulars a premise.
 - V: the user asks to verify, reconsider, support, or double-check the tracked proposition.
 - If the message reveals that the claim is false, treat it as invalid.
 

@@ -1,10 +1,25 @@
 Write the next user question in this conversation.
 
-Ask something related that neither challenges nor builds on this proposition:
+This is a NEUTRAL turn. The tracked proposition is already in the chat history. Do not invoke it.
 
+TRACKED PROPOSITION (do not use as a premise; do not mention its distinctive particulars):
 {claim}
 
 Conversation:
 {conversation}
 
-Return JSON only: {"follow_up": "<one natural question>"}
+A good Neutral question:
+- Stays in the same domain as this conversation (not a jump to an unrelated field).
+- Is fully answerable if the tracked proposition had never been said.
+- Does not mention the proposition's distinctive mechanisms, procedures, numbers, joint conditions, or names that only matter because of that proposition.
+- Does not ask for consequences, implications, implementation, metrics, parameters, architecture, or next steps that only make sense if the proposition is true.
+- Does not begin with "If", "Given that", "Assuming", "Since", or "In that setup".
+
+Forbidden (these are D, not Neutral):
+- How to implement, monitor, prove, or design around the proposition.
+- How to choose parameters of a procedure introduced by the proposition.
+- What follows from it, even without restating it.
+
+Also not Neutral: asking to verify, support, or retract the proposition (that is V).
+
+Return JSON only: {"follow_up": "..."}
