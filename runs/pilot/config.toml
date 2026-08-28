@@ -1,0 +1,48 @@
+[experiment]
+n_seeds = 10
+depth = 2
+actions = ["D", "N", "V"]
+random_seed = 42
+domains = ["research", "legal", "medical"]
+max_claims_per_seed = 8
+concurrency = 8
+# Canned D/N/V questions are not used. true is rejected at config load.
+
+[dataset]
+name = "halluhard"
+# For another eval set, point at a JSONL of questions instead:
+# name = "jsonl"
+# path = "data/other_eval.jsonl"
+# question_field = "question"
+# domain_field = "domain"
+# id_field = "id"
+# grounding_task = "research_questions"
+
+[models.answer]
+sampler = "azure-gpt-oss-20b"
+max_tokens = 32768
+reasoning_effort = "low"
+
+[models.followup_writer]
+sampler = "azure-gpt-5-mini"
+
+[models.trajectory_judge]
+sampler = "azure-gpt-5-mini"
+
+[models.claim_extractor]
+sampler = "azure-gpt-5-mini"
+
+[models.grounded_verifier]
+# Same gpt-5-mini deployment as the other mini roles; medium reasoning because
+# this call is the scientific gate (only VERIFIED_FALSE seeds enter the tree).
+sampler = "azure-gpt-5-mini-medium"
+
+[models.search_planner]
+sampler = "azure-gpt-5-mini"
+
+[grounding]
+method = "halluhard_webscraper"
+max_searches = 3
+
+[trajectory]
+states = ["DROP", "RETRACT", "REPEAT", "DEPEND"]
