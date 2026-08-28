@@ -1,0 +1,363 @@
+{
+  "n_verified_seeds": 2,
+  "domain_composition": {
+    "research": 2
+  },
+  "n_nodes": 24,
+  "n_judgments_ok": 24,
+  "n_judgments_failed": 0,
+  "t1": {
+    "by_action": {
+      "D": {
+        "DROP": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.6576280471103807
+          ]
+        },
+        "RETRACT": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.6576280471103807
+          ]
+        },
+        "REPEAT": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.6576280471103807
+          ]
+        },
+        "DEPEND": {
+          "count": 2,
+          "wilson": [
+            1.0,
+            0.34237195288961925,
+            1.0
+          ]
+        },
+        "n": 2,
+        "active": [
+          1.0,
+          0.34237195288961925,
+          1.0
+        ]
+      },
+      "N": {
+        "DROP": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.6576280471103807
+          ]
+        },
+        "RETRACT": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.6576280471103807
+          ]
+        },
+        "REPEAT": {
+          "count": 1,
+          "wilson": [
+            0.5,
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "DEPEND": {
+          "count": 1,
+          "wilson": [
+            0.5,
+            0.09452865480086614,
+            0.9054713451991339
+          ]
+        },
+        "n": 2,
+        "active": [
+          1.0,
+          0.34237195288961925,
+          1.0
+        ]
+      },
+      "V": {
+        "DROP": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.6576280471103807
+          ]
+        },
+        "RETRACT": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.6576280471103807
+          ]
+        },
+        "REPEAT": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.6576280471103807
+          ]
+        },
+        "DEPEND": {
+          "count": 2,
+          "wilson": [
+            1.0,
+            0.34237195288961925,
+            1.0
+          ]
+        },
+        "n": 2,
+        "active": [
+          1.0,
+          0.34237195288961925,
+          1.0
+        ]
+      }
+    },
+    "paired_mcnemar_active": {
+      "D_vs_N_active": {
+        "b": 0.0,
+        "c": 0.0,
+        "n_discordant": 0.0,
+        "p_value": 1.0
+      },
+      "D_vs_V_active": {
+        "b": 0.0,
+        "c": 0.0,
+        "n_discordant": 0.0,
+        "p_value": 1.0
+      },
+      "V_vs_N_active": {
+        "b": 0.0,
+        "c": 0.0,
+        "n_discordant": 0.0,
+        "p_value": 1.0
+      }
+    },
+    "n_seeds": 2
+  },
+  "t2": {
+    "n_t2": 18,
+    "transitions": {
+      "DROP": {
+        "D": {
+          "DROP": 0,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 0
+        },
+        "N": {
+          "DROP": 0,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 0
+        },
+        "V": {
+          "DROP": 0,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 0
+        }
+      },
+      "RETRACT": {
+        "D": {
+          "DROP": 0,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 0
+        },
+        "N": {
+          "DROP": 0,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 0
+        },
+        "V": {
+          "DROP": 0,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 0
+        }
+      },
+      "REPEAT": {
+        "D": {
+          "DROP": 0,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 1
+        },
+        "N": {
+          "DROP": 0,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 1
+        },
+        "V": {
+          "DROP": 0,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 1
+        }
+      },
+      "DEPEND": {
+        "D": {
+          "DROP": 1,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 4
+        },
+        "N": {
+          "DROP": 1,
+          "RETRACT": 0,
+          "REPEAT": 1,
+          "DEPEND": 3
+        },
+        "V": {
+          "DROP": 1,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 4
+        }
+      }
+    },
+    "seed_cluster_bootstrap_active": {
+      "P_active|DROP,D": {
+        "mean": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "n_seeds": 0.0
+      },
+      "P_active|DROP,N": {
+        "mean": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "n_seeds": 0.0
+      },
+      "P_active|DROP,V": {
+        "mean": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "n_seeds": 0.0
+      },
+      "P_active|RETRACT,D": {
+        "mean": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "n_seeds": 0.0
+      },
+      "P_active|RETRACT,N": {
+        "mean": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "n_seeds": 0.0
+      },
+      "P_active|RETRACT,V": {
+        "mean": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "n_seeds": 0.0
+      },
+      "P_active|REPEAT,D": {
+        "mean": 1.0,
+        "ci_low": 1.0,
+        "ci_high": 1.0,
+        "n_seeds": 1.0
+      },
+      "P_active|REPEAT,N": {
+        "mean": 1.0,
+        "ci_low": 1.0,
+        "ci_high": 1.0,
+        "n_seeds": 1.0
+      },
+      "P_active|REPEAT,V": {
+        "mean": 1.0,
+        "ci_low": 1.0,
+        "ci_high": 1.0,
+        "n_seeds": 1.0
+      },
+      "P_active|DEPEND,D": {
+        "mean": 0.8,
+        "ci_low": 0.6666666666666666,
+        "ci_high": 1.0,
+        "n_seeds": 2.0
+      },
+      "P_active|DEPEND,N": {
+        "mean": 0.8,
+        "ci_low": 0.6666666666666666,
+        "ci_high": 1.0,
+        "n_seeds": 2.0
+      },
+      "P_active|DEPEND,V": {
+        "mean": 0.8,
+        "ci_low": 0.6666666666666666,
+        "ci_high": 1.0,
+        "n_seeds": 2.0
+      }
+    },
+    "ever_depend_count": 14,
+    "depend_then_retract": 0,
+    "note": "Primary endpoint is the actual terminal T2 label, not strongest-ever state."
+  },
+  "action_compliance": {
+    "D": {
+      "n": 8,
+      "valid": 8,
+      "compliance": 1.0,
+      "realized": {
+        "realized_D": 8
+      }
+    },
+    "N": {
+      "n": 8,
+      "valid": 2,
+      "compliance": 0.25,
+      "realized": {
+        "realized_D": 6,
+        "realized_N": 2
+      }
+    },
+    "V": {
+      "n": 8,
+      "valid": 7,
+      "compliance": 0.875,
+      "realized": {
+        "realized_V": 7,
+        "realized_D": 1
+      }
+    },
+    "parse_failures": 0
+  },
+  "fallback_rates": {
+    "N": 0.0,
+    "V": 0.0,
+    "D": 0.0
+  },
+  "verification_attrition": {
+    "n_candidates": 67,
+    "by_status": {
+      "SUPPORTED": 50,
+      "AMBIGUOUS": 3,
+      "UNVERIFIABLE": 12,
+      "VERIFIED_FALSE": 2
+    },
+    "parse_failures": 0,
+    "eligible_verified_false": 2
+  },
+  "primary_endpoint": "actual terminal T2 label",
+  "secondary_ever_depend": "ever_depend is secondary only"
+}

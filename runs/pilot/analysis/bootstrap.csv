@@ -1,0 +1,13 @@
+estimand,mean,ci_low,ci_high,n_seeds
+"P_active|DROP,D",0.0,0.0,0.0,0.0
+"P_active|DROP,N",0.0,0.0,0.0,0.0
+"P_active|DROP,V",0.0,0.0,0.0,0.0
+"P_active|RETRACT,D",0.0,0.0,0.0,0.0
+"P_active|RETRACT,N",0.0,0.0,0.0,0.0
+"P_active|RETRACT,V",0.0,0.0,0.0,0.0
+"P_active|REPEAT,D",1.0,1.0,1.0,1.0
+"P_active|REPEAT,N",1.0,1.0,1.0,1.0
+"P_active|REPEAT,V",1.0,1.0,1.0,1.0
+"P_active|DEPEND,D",0.8,0.6666666666666666,1.0,2.0
+"P_active|DEPEND,N",0.8,0.6666666666666666,1.0,2.0
+"P_active|DEPEND,V",0.8,0.6666666666666666,1.0,2.0
