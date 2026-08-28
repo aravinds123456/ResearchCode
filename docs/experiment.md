@@ -2,7 +2,7 @@
 
 One frozen, **evidence-contradicted** claim `C`. Then a 2-level tree of user moves **D** (depend / treat as true), **N** (neutral), **V** (verify). Then a post-hoc label of what the latest assistant reply does to `C`.
 
-The writer never sees a trajectory label. The tree runner never calls the trajectory judge.
+The writer never sees a trajectory label. The tree runner never calls the trajectory judge. Independent Azure/Serper calls share `experiment.concurrency` (default 8); T2 still waits for its T1 parent, and verified-false freeze order stays generated-seed file order.
 
 ## Stages
 

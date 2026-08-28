@@ -104,6 +104,8 @@ Scale with `configs/branching_final.toml` only after a ~10-seed manual audit of 
 
 Resume is by artifact id. Re-running a stage skips completed seeds/claims/nodes.
 
+Stages overlap independent I/O (default `concurrency = 8` in TOML, or `--concurrency N`). Tree T2 still waits for that seed’s T1. Verify still freezes seeds in generated-seed file order so a later seed cannot displace an earlier one at the `n_seeds` cap.
+
 ## Run FactBench Medium/Hard
 
 Same stages. Different config and run directory.

@@ -25,6 +25,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg.dataset.task_for("legal"), "legal_cases")
         self.assertEqual(cfg.dataset.task_for("custom"), "research_questions")
         self.assertFalse(cfg.allow_followup_fallback)
+        self.assertEqual(cfg.concurrency, 8)
 
     def test_followup_fallback_flag_is_rejected(self):
         import tempfile

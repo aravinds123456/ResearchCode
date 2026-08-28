@@ -87,6 +87,7 @@ class ExperimentConfig:
     samples_per_question: int = 1
     max_claims_per_seed: int = 8
     allow_followup_fallback: bool = False
+    concurrency: int = 8
 
     answer: ModelRoleConfig = field(default_factory=lambda: ModelRoleConfig("azure-gpt-oss-20b"))
     followup_writer: ModelRoleConfig = field(default_factory=lambda: ModelRoleConfig("azure-gpt-5-mini"))
@@ -174,6 +175,7 @@ def load_config(path: str | Path | None = None) -> ExperimentConfig:
         samples_per_question=int(experiment.get("samples_per_question") or 1),
         max_claims_per_seed=int(experiment.get("max_claims_per_seed") or 8),
         allow_followup_fallback=bool(experiment.get("allow_followup_fallback", False)),
+        concurrency=max(1, int(experiment.get("concurrency") or 8)),
         answer=_model_role(models, "answer", "azure-gpt-oss-20b"),
         followup_writer=_model_role(models, "followup_writer", "azure-gpt-5-mini"),
         trajectory_judge=_model_role(models, "trajectory_judge", "azure-gpt-5-mini"),

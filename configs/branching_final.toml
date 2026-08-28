@@ -5,6 +5,7 @@ actions = ["D", "N", "V"]
 random_seed = 42
 domains = ["research", "legal", "medical"]
 max_claims_per_seed = 8
+concurrency = 8
 # Canned D/N/V questions are not used. true is rejected at config load.
 
 [dataset]

@@ -77,6 +77,7 @@ class TreeTests(unittest.TestCase):
                     writer=writer,
                     actions=("D", "N", "V"),
                     depth=2,
+                    concurrency=4,
                 )
                 nodes = store.nodes()
                 t1 = [n for n in nodes if n.depth == 1]

@@ -6,6 +6,7 @@ modify raw node records.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 from datetime import datetime, timezone
@@ -91,6 +92,12 @@ class RunStore:
         self.analysis_dir = self.root / "analysis"
         self.reports_dir = self.root / "reports"
         self.logs_dir = self.root / "logs"
+        self._async_lock: asyncio.Lock | None = None
+
+    def io_lock(self) -> asyncio.Lock:
+        if self._async_lock is None:
+            self._async_lock = asyncio.Lock()
+        return self._async_lock
 
     @property
     def manifest_path(self) -> Path:
@@ -164,6 +171,7 @@ class RunStore:
             "n_seeds": config.n_seeds,
             "depth": config.depth,
             "actions": list(config.actions),
+            "concurrency": config.concurrency,
             "allow_followup_fallback": config.allow_followup_fallback,
         }
         if extra:

@@ -8,6 +8,7 @@ import csv
 import sys
 
 from .analysis import analyze
+from .concurrency import bounded_map, clamp_concurrency
 from .config import DEFAULT_CONFIG, load_config
 from .interventions import audit_action
 from .models import ExperimentSamplers
@@ -32,6 +33,12 @@ def _parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--config", default=str(DEFAULT_CONFIG), help="TOML config path")
     common.add_argument("--run", required=False, help="Run directory, e.g. runs/pilot")
+    common.add_argument(
+        "--concurrency",
+        type=int,
+        default=None,
+        help="Max in-flight work units (overrides experiment.concurrency)",
+    )
 
     parser = argparse.ArgumentParser(
         prog="branching_hallucinations",
@@ -69,6 +76,12 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _concurrency(args, config) -> int:
+    if args.concurrency is not None:
+        return clamp_concurrency(args.concurrency)
+    return clamp_concurrency(config.concurrency)
+
+
 def _store(args) -> RunStore:
     if not args.run:
         raise SystemExit("--run is required")
@@ -90,6 +103,8 @@ async def cmd_generate_seeds(args) -> None:
     store.write_manifest(config)
     samplers = ExperimentSamplers.from_config(config)
     n_seeds = args.n or config.n_seeds
+    limit = _concurrency(args, config)
+    print(f"concurrency={limit}")
     created = await generate_seeds(
         store,
         answer_model=samplers.answer,
@@ -99,6 +114,7 @@ async def cmd_generate_seeds(args) -> None:
         samples_per_question=config.samples_per_question,
         answer_name=config.answer.sampler,
         dataset=config.dataset,
+        concurrency=limit,
     )
     print(f"Wrote {len(created)} new seeds to {store.generated_seeds_path}")
 
@@ -108,19 +124,26 @@ async def cmd_extract_claims(args) -> None:
     store = _store(args)
     samplers = ExperimentSamplers.from_config(config)
     done_seeds = {claim.seed_id for claim in store.candidate_claims()}
+    pending = [seed for seed in store.generated_seeds() if seed.seed_id not in done_seeds]
+    limit = _concurrency(args, config)
+    print(f"concurrency={limit}")
     n_new = 0
-    for seed in store.generated_seeds():
-        if seed.seed_id in done_seeds:
-            continue
+
+    async def _one(seed):
         claims = await extract_claims_for_seed(
             seed, samplers.claim_extractor, max_claims=config.max_claims_per_seed
         )
+        async with store.io_lock():
+            for claim in claims:
+                store.append_claim(claim)
+        return seed, claims
+
+    pairs = await bounded_map(pending, _one, concurrency=limit)
+    for seed, claims in pairs:
         if not claims:
             print(f"{seed.seed_id}: no parseable claims (excluded, not labeled false)")
             continue
-        for claim in claims:
-            store.append_claim(claim)
-            n_new += 1
+        n_new += len(claims)
         print(f"{seed.seed_id}: {len(claims)} candidate claims")
     print(f"Wrote {n_new} claims to {store.candidate_claims_path}")
 
@@ -131,7 +154,6 @@ async def cmd_verify_seeds(args) -> None:
     config = load_config(args.config)
     store = _store(args)
     samplers = ExperimentSamplers.from_config(config)
-    seeds = store.generated_by_id()
     claims = store.candidate_claims()
     done = store.completed_ids(store.verification_path, "claim_id")
     already_verified = {item.seed_id for item in store.verified_seeds()}
@@ -140,57 +162,84 @@ async def cmd_verify_seeds(args) -> None:
     by_seed: dict[str, list] = {}
     for claim in claims:
         by_seed.setdefault(claim.seed_id, []).append(claim)
-    for seed_id, seed_claims in by_seed.items():
-        if n_verified >= max_verified:
-            break
-        if seed_id in already_verified:
+    remaining = []
+    for seed in store.generated_seeds():
+        if seed.seed_id in already_verified:
             continue
-        seed = seeds.get(seed_id)
-        if seed is None:
+        seed_claims = by_seed.get(seed.seed_id)
+        if not seed_claims:
             continue
-        chosen = None
-        for claim in seed_claims:
-            if claim.claim_id in done:
+        remaining.append((seed, seed_claims))
+    limit = _concurrency(args, config)
+    print(f"concurrency={limit}")
+    cursor = 0
+    while n_verified < max_verified and cursor < len(remaining):
+        need = max_verified - n_verified
+        take = min(limit, need, len(remaining) - cursor)
+        batch = remaining[cursor : cursor + take]
+        cursor += take
+
+        async def _verify_one(item):
+            seed, seed_claims = item
+            try:
+                for claim in seed_claims:
+                    if claim.claim_id in done:
+                        continue
+                    result = await verify_claim(
+                        claim=claim.text,
+                        context=seed.seed_answer,
+                        domain=seed.domain,
+                        search_sampler=samplers.search_planner,
+                        verifier=samplers.grounded_verifier,
+                        method=config.grounding_method,
+                        max_searches=config.max_searches,
+                        claim_id=claim.claim_id,
+                        grounding_task=config.dataset.task_for(seed.domain),
+                    )
+                    async with store.io_lock():
+                        store.append_verification(result)
+                        done.add(claim.claim_id)
+                    print(f"{claim.claim_id}: {result.status.value}")
+                    if (
+                        result.status is VerificationStatus.VERIFIED_FALSE
+                        and result.parse_status.value != "failed"
+                    ):
+                        return ("ok", seed, claim, result)
+                return ("ok", seed, None, None)
+            except Exception as exc:
+                return ("err", seed, exc, None)
+
+        outcomes = await bounded_map(batch, _verify_one, concurrency=take)
+        first_err = None
+        for tag, seed, claim_or_exc, result in outcomes:
+            if tag == "err":
+                if first_err is None:
+                    first_err = claim_or_exc
                 continue
-            result = await verify_claim(
-                claim=claim.text,
-                context=seed.seed_answer,
+            if n_verified >= max_verified or claim_or_exc is None:
+                continue
+            claim, result = claim_or_exc, result
+            verified = VerifiedSeed(
+                seed_id=seed.seed_id,
+                question_id=seed.question_id,
                 domain=seed.domain,
-                search_sampler=samplers.search_planner,
-                verifier=samplers.grounded_verifier,
-                method=config.grounding_method,
-                max_searches=config.max_searches,
-                claim_id=claim.claim_id,
-                grounding_task=config.dataset.task_for(seed.domain),
+                question=seed.question,
+                seed_answer=seed.seed_answer,
+                tracked_claim=claim.text,
+                tracked_claim_id=claim.claim_id,
+                verification_status=VerificationStatus.VERIFIED_FALSE,
+                verification_reason=result.reason,
+                queries=result.queries,
+                sources=result.sources,
+                evidence_passages=result.evidence_passages,
+                answer_model_metadata=seed.generation_metadata,
+                verification_metadata=result.to_dict(),
             )
-            store.append_verification(result)
-            done.add(claim.claim_id)
-            print(f"{claim.claim_id}: {result.status.value}")
-            if result.status is VerificationStatus.VERIFIED_FALSE and result.parse_status.value != "failed":
-                chosen = (claim, result)
-                break
-        if chosen is None:
-            continue
-        claim, result = chosen
-        verified = VerifiedSeed(
-            seed_id=seed.seed_id,
-            question_id=seed.question_id,
-            domain=seed.domain,
-            question=seed.question,
-            seed_answer=seed.seed_answer,
-            tracked_claim=claim.text,
-            tracked_claim_id=claim.claim_id,
-            verification_status=VerificationStatus.VERIFIED_FALSE,
-            verification_reason=result.reason,
-            queries=result.queries,
-            sources=result.sources,
-            evidence_passages=result.evidence_passages,
-            answer_model_metadata=seed.generation_metadata,
-            verification_metadata=result.to_dict(),
-        )
-        store.append_verified(verified)
-        n_verified += 1
-        print(f"FROZEN {verified.seed_id}: {verified.tracked_claim[:120]}")
+            store.append_verified(verified)
+            n_verified += 1
+            print(f"FROZEN {verified.seed_id}: {verified.tracked_claim[:120]}")
+        if first_err is not None:
+            raise first_err
     print(f"Verified-false seeds: {len(store.verified_seeds())} in {store.verified_seeds_path}")
 
 
@@ -203,10 +252,11 @@ async def cmd_generate_tree(args) -> None:
     seeds = seeds[:max_seeds]
     if not seeds:
         raise SystemExit("No verified-false seeds. Run verify-seeds first.")
+    limit = _concurrency(args, config)
     print(
         f"{len(seeds)} verified-false seeds, depth={config.depth}, "
-        f"{expected_node_count(len(config.actions), config.depth)} nodes/seed. "
-        "Trajectory judge is not called."
+        f"{expected_node_count(len(config.actions), config.depth)} nodes/seed, "
+        f"concurrency={limit}. Trajectory judge is not called."
     )
     created = await generate_tree(
         store,
@@ -215,6 +265,7 @@ async def cmd_generate_tree(args) -> None:
         writer=samplers.followup_writer,
         actions=config.actions,
         depth=config.depth,
+        concurrency=limit,
     )
     print(f"Wrote {len(created)} new nodes to {store.nodes_path}")
 
@@ -226,10 +277,11 @@ async def cmd_audit_actions(args) -> None:
     seeds = store.seeds_by_id()
     nodes_by_id = store.nodes_by_id()
     done = store.completed_ids(store.action_audit_path(args.version), "node_id")
-    n = 0
-    for node in store.nodes():
-        if node.node_id in done:
-            continue
+    pending = [node for node in store.nodes() if node.node_id not in done]
+    limit = _concurrency(args, config)
+    print(f"concurrency={limit}")
+
+    async def _one(node):
         seed = seeds[node.seed_id]
         before = conversation_before_user_turn(node, seed, nodes_by_id)
         audit = await audit_action(
@@ -244,9 +296,12 @@ async def cmd_audit_actions(args) -> None:
             **audit.auditor_metadata,
             "fallback_used": bool((node.intervention_metadata or {}).get("fallback_used")),
         }
-        store.append_action_audit(audit, version=args.version)
-        n += 1
-    print(f"Wrote {n} action audits to {store.action_audit_path(args.version)}")
+        async with store.io_lock():
+            store.append_action_audit(audit, version=args.version)
+        return audit
+
+    audits = await bounded_map(pending, _one, concurrency=limit)
+    print(f"Wrote {len(audits)} action audits to {store.action_audit_path(args.version)}")
 
 
 async def cmd_judge_trajectories(args) -> None:
@@ -256,10 +311,11 @@ async def cmd_judge_trajectories(args) -> None:
     seeds = store.seeds_by_id()
     nodes_by_id = store.nodes_by_id()
     done = store.completed_ids(store.trajectory_path(args.version), "node_id")
-    n = 0
-    for node in store.nodes():
-        if node.node_id in done:
-            continue
+    pending = [node for node in store.nodes() if node.node_id not in done]
+    limit = _concurrency(args, config)
+    print(f"concurrency={limit}")
+
+    async def _one(node):
         seed = seeds[node.seed_id]
         convo = conversation_for(node.node_id, seed, nodes_by_id)
         judgment = await judge_trajectory(
@@ -271,12 +327,15 @@ async def cmd_judge_trajectories(args) -> None:
             latest_response=node.assistant_response,
             judge=samplers.trajectory_judge,
         )
-        store.append_judgment(judgment, version=args.version)
-        n += 1
+        async with store.io_lock():
+            store.append_judgment(judgment, version=args.version)
         status = judgment.parse_status.value
         label = "UNPARSED" if judgment.parse_status is ParseStatus.FAILED else judgment.label.value
         print(f"{node.node_id}: {status} {label}")
-    print(f"Wrote {n} judgments to {store.trajectory_path(args.version)}")
+        return judgment
+
+    judgments = await bounded_map(pending, _one, concurrency=limit)
+    print(f"Wrote {len(judgments)} judgments to {store.trajectory_path(args.version)}")
 
 
 def cmd_analyze(args) -> None:

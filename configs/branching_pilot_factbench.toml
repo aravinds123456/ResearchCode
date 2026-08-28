@@ -6,6 +6,7 @@ random_seed = 42
 # Loader round-robins Hard and Moderate so a 10- or 100-seed run is not Hard-only.
 domains = ["hard", "moderate"]
 max_claims_per_seed = 8
+concurrency = 8
 # Canned D/N/V questions are not used. true is rejected at config load.
 
 [dataset]

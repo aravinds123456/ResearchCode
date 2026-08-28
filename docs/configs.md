@@ -21,6 +21,7 @@ Copy one of these rather than editing keys ad hoc in an existing run.
 | `random_seed` | Analysis bootstrap only, not Azure sampling |
 | `domains` | Loader filter. HalluHard: `research`,`legal`,`medical`. FactBench: `hard`,`moderate` |
 | `max_claims_per_seed` | Cap on extracted candidates |
+| `concurrency` | Max in-flight I/O units per stage (Azure/Serper/fetch). Default `8`. Override with `--concurrency`. Does not change freeze order or tree parent/child waits |
 | `allow_followup_fallback` | **Must be absent or false.** `true` raises |
 
 ## `[dataset]`
