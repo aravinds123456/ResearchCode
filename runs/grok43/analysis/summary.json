@@ -1,0 +1,364 @@
+{
+  "n_verified_seeds": 50,
+  "domain_composition": {
+    "research": 50
+  },
+  "n_nodes": 600,
+  "n_judgments_ok": 600,
+  "n_judgments_failed": 0,
+  "t1": {
+    "by_action": {
+      "D": {
+        "DROP": {
+          "count": 1,
+          "wilson": [
+            0.02,
+            0.0035391680889764604,
+            0.10495686471836953
+          ]
+        },
+        "RETRACT": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.07135003417431873
+          ]
+        },
+        "REPEAT": {
+          "count": 7,
+          "wilson": [
+            0.14,
+            0.06950745262022862,
+            0.2618645719852809
+          ]
+        },
+        "DEPEND": {
+          "count": 42,
+          "wilson": [
+            0.84,
+            0.7148551903823401,
+            0.9166267863791231
+          ]
+        },
+        "n": 50,
+        "active": [
+          0.98,
+          0.8950431352816304,
+          0.9964608319110235
+        ]
+      },
+      "N": {
+        "DROP": {
+          "count": 30,
+          "wilson": [
+            0.6,
+            0.4618118910275937,
+            0.7239181021375425
+          ]
+        },
+        "RETRACT": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.07135003417431873
+          ]
+        },
+        "REPEAT": {
+          "count": 13,
+          "wilson": [
+            0.26,
+            0.15871379651367384,
+            0.3955342198899992
+          ]
+        },
+        "DEPEND": {
+          "count": 7,
+          "wilson": [
+            0.14,
+            0.06950745262022862,
+            0.2618645719852809
+          ]
+        },
+        "n": 50,
+        "active": [
+          0.4,
+          0.2760818978624575,
+          0.5381881089724063
+        ]
+      },
+      "V": {
+        "DROP": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.07135003417431873
+          ]
+        },
+        "RETRACT": {
+          "count": 11,
+          "wilson": [
+            0.22,
+            0.12753786224302288,
+            0.35241815689459555
+          ]
+        },
+        "REPEAT": {
+          "count": 33,
+          "wilson": [
+            0.66,
+            0.5215356854148285,
+            0.7756323036493895
+          ]
+        },
+        "DEPEND": {
+          "count": 6,
+          "wilson": [
+            0.12,
+            0.05617523710624647,
+            0.2380507888662358
+          ]
+        },
+        "n": 50,
+        "active": [
+          0.78,
+          0.6475818431054045,
+          0.8724621377569771
+        ]
+      }
+    },
+    "paired_mcnemar_active": {
+      "D_vs_N_active": {
+        "b": 30.0,
+        "c": 1.0,
+        "n_discordant": 31.0,
+        "p_value": 2.9802322387695312e-08
+      },
+      "D_vs_V_active": {
+        "b": 10.0,
+        "c": 0.0,
+        "n_discordant": 10.0,
+        "p_value": 0.001953125
+      },
+      "V_vs_N_active": {
+        "b": 23.0,
+        "c": 4.0,
+        "n_discordant": 27.0,
+        "p_value": 0.000310748815536499
+      }
+    },
+    "n_seeds": 50
+  },
+  "t2": {
+    "n_t2": 450,
+    "transitions": {
+      "DROP": {
+        "D": {
+          "DROP": 0,
+          "RETRACT": 0,
+          "REPEAT": 0,
+          "DEPEND": 31
+        },
+        "N": {
+          "DROP": 25,
+          "RETRACT": 0,
+          "REPEAT": 3,
+          "DEPEND": 3
+        },
+        "V": {
+          "DROP": 1,
+          "RETRACT": 6,
+          "REPEAT": 20,
+          "DEPEND": 4
+        }
+      },
+      "RETRACT": {
+        "D": {
+          "DROP": 1,
+          "RETRACT": 2,
+          "REPEAT": 2,
+          "DEPEND": 6
+        },
+        "N": {
+          "DROP": 6,
+          "RETRACT": 1,
+          "REPEAT": 2,
+          "DEPEND": 2
+        },
+        "V": {
+          "DROP": 3,
+          "RETRACT": 5,
+          "REPEAT": 2,
+          "DEPEND": 1
+        }
+      },
+      "REPEAT": {
+        "D": {
+          "DROP": 1,
+          "RETRACT": 1,
+          "REPEAT": 7,
+          "DEPEND": 44
+        },
+        "N": {
+          "DROP": 18,
+          "RETRACT": 0,
+          "REPEAT": 20,
+          "DEPEND": 15
+        },
+        "V": {
+          "DROP": 5,
+          "RETRACT": 4,
+          "REPEAT": 33,
+          "DEPEND": 11
+        }
+      },
+      "DEPEND": {
+        "D": {
+          "DROP": 1,
+          "RETRACT": 0,
+          "REPEAT": 2,
+          "DEPEND": 52
+        },
+        "N": {
+          "DROP": 15,
+          "RETRACT": 0,
+          "REPEAT": 9,
+          "DEPEND": 31
+        },
+        "V": {
+          "DROP": 4,
+          "RETRACT": 4,
+          "REPEAT": 21,
+          "DEPEND": 26
+        }
+      }
+    },
+    "seed_cluster_bootstrap_active": {
+      "P_active|DROP,D": {
+        "mean": 1.0,
+        "ci_low": 1.0,
+        "ci_high": 1.0,
+        "n_seeds": 31.0
+      },
+      "P_active|DROP,N": {
+        "mean": 0.1935483870967742,
+        "ci_low": 0.06451612903225806,
+        "ci_high": 0.3225806451612903,
+        "n_seeds": 31.0
+      },
+      "P_active|DROP,V": {
+        "mean": 0.7741935483870968,
+        "ci_low": 0.6129032258064516,
+        "ci_high": 0.9032258064516129,
+        "n_seeds": 31.0
+      },
+      "P_active|RETRACT,D": {
+        "mean": 0.7272727272727273,
+        "ci_low": 0.45454545454545453,
+        "ci_high": 1.0,
+        "n_seeds": 11.0
+      },
+      "P_active|RETRACT,N": {
+        "mean": 0.36363636363636365,
+        "ci_low": 0.09090909090909091,
+        "ci_high": 0.6363636363636364,
+        "n_seeds": 11.0
+      },
+      "P_active|RETRACT,V": {
+        "mean": 0.2727272727272727,
+        "ci_low": 0.0,
+        "ci_high": 0.5454545454545454,
+        "n_seeds": 11.0
+      },
+      "P_active|REPEAT,D": {
+        "mean": 0.9622641509433962,
+        "ci_low": 0.9107142857142857,
+        "ci_high": 1.0,
+        "n_seeds": 41.0
+      },
+      "P_active|REPEAT,N": {
+        "mean": 0.660377358490566,
+        "ci_low": 0.5370370370370371,
+        "ci_high": 0.7777777777777778,
+        "n_seeds": 41.0
+      },
+      "P_active|REPEAT,V": {
+        "mean": 0.8301886792452831,
+        "ci_low": 0.6964285714285714,
+        "ci_high": 0.9411764705882353,
+        "n_seeds": 41.0
+      },
+      "P_active|DEPEND,D": {
+        "mean": 0.9818181818181818,
+        "ci_low": 0.9433962264150944,
+        "ci_high": 1.0,
+        "n_seeds": 44.0
+      },
+      "P_active|DEPEND,N": {
+        "mean": 0.7272727272727273,
+        "ci_low": 0.5892857142857143,
+        "ci_high": 0.85,
+        "n_seeds": 44.0
+      },
+      "P_active|DEPEND,V": {
+        "mean": 0.8545454545454545,
+        "ci_low": 0.7627118644067796,
+        "ci_high": 0.9423076923076923,
+        "n_seeds": 44.0
+      }
+    },
+    "ever_depend_count": 226,
+    "depend_then_retract": 4,
+    "note": "Primary endpoint is the actual terminal T2 label, not strongest-ever state."
+  },
+  "action_compliance": {
+    "D": {
+      "n": 200,
+      "valid": 200,
+      "compliance": 1.0,
+      "realized": {
+        "realized_D": 200
+      }
+    },
+    "N": {
+      "n": 200,
+      "valid": 178,
+      "compliance": 0.89,
+      "realized": {
+        "realized_N": 178,
+        "realized_D": 19,
+        "realized_V": 3
+      }
+    },
+    "V": {
+      "n": 200,
+      "valid": 198,
+      "compliance": 0.99,
+      "realized": {
+        "realized_V": 198,
+        "realized_D": 2
+      }
+    },
+    "parse_failures": 0
+  },
+  "fallback_rates": {
+    "N": 0.0,
+    "D": 0.0,
+    "V": 0.0
+  },
+  "verification_attrition": {
+    "n_candidates": 3303,
+    "by_status": {
+      "SUPPORTED": 1408,
+      "AMBIGUOUS": 200,
+      "UNVERIFIABLE": 1645,
+      "VERIFIED_FALSE": 50
+    },
+    "parse_failures": 1,
+    "eligible_verified_false": 50
+  },
+  "primary_endpoint": "actual terminal T2 label",
+  "secondary_ever_depend": "ever_depend is secondary only"
+}
