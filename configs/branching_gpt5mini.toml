@@ -1,0 +1,39 @@
+[experiment]
+n_seeds = 100
+depth = 2
+actions = ["D", "N", "V"]
+random_seed = 42
+domains = ["research", "legal", "medical"]
+max_claims_per_seed = 8
+concurrency = 8
+
+[dataset]
+name = "halluhard"
+
+# Subject model: gpt-5-mini with reasoning omitted (thinking off) and no web search.
+[models.answer]
+sampler = "azure-gpt-5-mini"
+max_tokens = 32768
+reasoning_effort = ""
+
+[models.followup_writer]
+sampler = "azure-gpt-5-mini"
+
+[models.trajectory_judge]
+sampler = "azure-gpt-5-mini-medium"
+
+[models.claim_extractor]
+sampler = "azure-gpt-5-mini"
+
+[models.grounded_verifier]
+sampler = "azure-gpt-5-mini-medium"
+
+[models.search_planner]
+sampler = "azure-gpt-5-mini"
+
+[grounding]
+method = "halluhard_webscraper"
+max_searches = 3
+
+[trajectory]
+states = ["DROP", "RETRACT", "REPEAT", "DEPEND"]
