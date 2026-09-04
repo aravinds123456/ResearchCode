@@ -1,0 +1,128 @@
+{
+  "experiment_id": "factbench_deepseek100",
+  "created_at": "2026-09-02T02:17:47Z",
+  "updated_at": "2026-09-02T02:36:41Z",
+  "git_sha": "6265f5546dd259ab9808c6400b226268f5dc1f56",
+  "schema_version": "branching_hallucinations.v1",
+  "random_seed": 42,
+  "config_file": "runs/factbench_deepseek100/config_resume.toml",
+  "prompt_versions": {
+    "action_audit": {
+      "name": "action_audit",
+      "version": "action_audit.v1",
+      "hash": "f23ee7b014f9986f",
+      "path": "branching_hallucinations/prompts/action_audit.txt"
+    },
+    "claim_extraction": {
+      "name": "claim_extraction",
+      "version": "claim_extraction.v1",
+      "hash": "43a7a8aa3c83e4d2",
+      "path": "branching_hallucinations/prompts/claim_extraction.txt"
+    },
+    "followup_d": {
+      "name": "followup_d",
+      "version": "followup_d.v1",
+      "hash": "06442fb366d9e820",
+      "path": "branching_hallucinations/prompts/followup_d.txt"
+    },
+    "followup_n": {
+      "name": "followup_n",
+      "version": "followup_n.v1",
+      "hash": "2c97201074d21c59",
+      "path": "branching_hallucinations/prompts/followup_n.txt"
+    },
+    "followup_v": {
+      "name": "followup_v",
+      "version": "followup_v.v1",
+      "hash": "e4e53ae06c581ede",
+      "path": "branching_hallucinations/prompts/followup_v.txt"
+    },
+    "grounded_verifier": {
+      "name": "grounded_verifier",
+      "version": "grounded_verifier.v1",
+      "hash": "07be27d359c6ce5b",
+      "path": "branching_hallucinations/prompts/grounded_verifier.txt"
+    },
+    "trajectory_judge": {
+      "name": "trajectory_judge",
+      "version": "trajectory_judge.v1",
+      "hash": "e7d8de0048272d53",
+      "path": "branching_hallucinations/prompts/trajectory_judge.txt"
+    }
+  },
+  "answer_model": {
+    "sampler": "azure-gpt-oss-20b",
+    "deployment": "DeepSeek-V4-Flash",
+    "max_tokens": 32768,
+    "reasoning_effort": "low",
+    "temperature": null,
+    "api": null
+  },
+  "followup_writer_model": {
+    "sampler": "azure-gpt-5-mini",
+    "deployment": "",
+    "max_tokens": null,
+    "reasoning_effort": null,
+    "temperature": null,
+    "api": null
+  },
+  "trajectory_judge_model": {
+    "sampler": "azure-gpt-5-mini-medium",
+    "deployment": "",
+    "max_tokens": null,
+    "reasoning_effort": null,
+    "temperature": null,
+    "api": null
+  },
+  "claim_extractor_model": {
+    "sampler": "azure-gpt-5-mini",
+    "deployment": "",
+    "max_tokens": null,
+    "reasoning_effort": null,
+    "temperature": null,
+    "api": null
+  },
+  "grounded_verifier_model": {
+    "sampler": "azure-gpt-5-mini-medium",
+    "deployment": "",
+    "max_tokens": null,
+    "reasoning_effort": null,
+    "temperature": null,
+    "api": null
+  },
+  "search_planner_model": {
+    "sampler": "azure-gpt-5-mini",
+    "deployment": "",
+    "max_tokens": null,
+    "reasoning_effort": null,
+    "temperature": null,
+    "api": null
+  },
+  "dataset": {
+    "name": "factbench",
+    "path": "runs/factbench_deepseek100/prompts_skip_filter.jsonl",
+    "question_field": "question",
+    "domain_field": "domain",
+    "id_field": "id",
+    "grounding_task": "research_questions",
+    "grounding_tasks": {}
+  },
+  "domains": [
+    "hard",
+    "moderate"
+  ],
+  "grounding_method": "halluhard_webscraper",
+  "serper": {
+    "max_searches": 3,
+    "credential": "SERPER_API_KEY"
+  },
+  "n_seeds": 100,
+  "depth": 2,
+  "actions": [
+    "D",
+    "N",
+    "V"
+  ],
+  "concurrency": 8,
+  "allow_followup_fallback": false
+}
