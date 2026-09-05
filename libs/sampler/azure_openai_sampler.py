@@ -137,7 +137,11 @@ def empty_retry_tokens(current: int) -> int:
 
 
 def _is_models_as_a_service(endpoint: str) -> bool:
-    return "/openai/v1" in endpoint or endpoint.endswith("/models")
+    return (
+        "/openai/v1" in endpoint
+        or endpoint.endswith("/models")
+        or "/managed-deployments/" in endpoint
+    )
 
 
 def get_shared_azure_client(

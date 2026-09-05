@@ -1,0 +1,46 @@
+# FactBench questions. Subject model: openai--gpt-oss-120b via Azure Chat Completions.
+# Same protocol as DeepSeek FactBench: extract → Serper → VERIFIED_FALSE → D/N/V.
+# FactBench VERIFY labels are not used.
+
+[experiment]
+n_seeds = 100
+depth = 2
+actions = ["D", "N", "V"]
+random_seed = 42
+domains = ["hard", "moderate"]
+max_claims_per_seed = 8
+concurrency = 8
+
+[dataset]
+name = "factbench"
+path = "data/factbench/prompts.jsonl"
+grounding_task = "research_questions"
+
+[models.answer]
+sampler = "azure-gpt-oss-20b"
+deployment = "openai--gpt-oss-120b"
+api = "chat"
+max_tokens = 32768
+reasoning_effort = "low"
+
+[models.followup_writer]
+sampler = "azure-gpt-5-mini"
+
+[models.trajectory_judge]
+sampler = "azure-gpt-5-mini-medium"
+
+[models.claim_extractor]
+sampler = "azure-gpt-5-mini"
+
+[models.grounded_verifier]
+sampler = "azure-gpt-5-mini-medium"
+
+[models.search_planner]
+sampler = "azure-gpt-5-mini"
+
+[grounding]
+method = "halluhard_webscraper"
+max_searches = 3
+
+[trajectory]
+states = ["DROP", "RETRACT", "REPEAT", "DEPEND"]
