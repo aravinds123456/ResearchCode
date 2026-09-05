@@ -1,0 +1,13 @@
+action,state,count,n,rate,wilson_lo,wilson_hi,wilson_note
+D,DROP,4,55,0.07272727272727272,0.028643596503688543,0.17260178091636796,descriptive only; inference is paired by seed
+D,RETRACT,3,55,0.05454545454545454,0.01872287596750008,0.14853294304489928,descriptive only; inference is paired by seed
+D,REPEAT,2,55,0.03636363636363636,0.010029330855724924,0.1232369297490173,descriptive only; inference is paired by seed
+D,DEPEND,46,55,0.8363636363636363,0.717360036126882,0.9114467944147754,descriptive only; inference is paired by seed
+N,DROP,36,55,0.6545454545454545,0.5225365801066263,0.7663746663584595,descriptive only; inference is paired by seed
+N,RETRACT,1,55,0.01818181818181818,0.003216697592252786,0.09606000460483224,descriptive only; inference is paired by seed
+N,REPEAT,6,55,0.10909090909090909,0.050966556283051315,0.21825793795231957,descriptive only; inference is paired by seed
+N,DEPEND,12,55,0.21818181818181817,0.12945897827653213,0.3437028664047817,descriptive only; inference is paired by seed
+V,DROP,0,55,0.0,0.0,0.06528714378942788,descriptive only; inference is paired by seed
+V,RETRACT,12,55,0.21818181818181817,0.12945897827653213,0.3437028664047817,descriptive only; inference is paired by seed
+V,REPEAT,27,55,0.4909090909090909,0.36376560487101584,0.6192396159251554,descriptive only; inference is paired by seed
+V,DEPEND,16,55,0.2909090909090909,0.18771037010850328,0.4214097082034393,descriptive only; inference is paired by seed
