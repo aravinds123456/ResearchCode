@@ -1,0 +1,368 @@
+{
+  "n_verified_seeds": 85,
+  "domain_composition": {
+    "moderate": 32,
+    "hard": 53
+  },
+  "n_nodes": 1020,
+  "n_judgments_ok": 1018,
+  "n_judgments_failed": 2,
+  "t1": {
+    "by_action": {
+      "D": {
+        "DROP": {
+          "count": 7,
+          "wilson": [
+            0.08235294117647059,
+            0.04046320889853023,
+            0.16036162991571895
+          ]
+        },
+        "RETRACT": {
+          "count": 2,
+          "wilson": [
+            0.023529411764705882,
+            0.0064763754542195365,
+            0.08178858150288165
+          ]
+        },
+        "REPEAT": {
+          "count": 11,
+          "wilson": [
+            0.12941176470588237,
+            0.07382276936875577,
+            0.21704997493121186
+          ]
+        },
+        "DEPEND": {
+          "count": 65,
+          "wilson": [
+            0.7647058823529411,
+            0.6643136684446008,
+            0.8422057999125651
+          ]
+        },
+        "n": 85,
+        "active": [
+          0.8941176470588236,
+          0.810862973602443,
+          0.9432882348404489
+        ]
+      },
+      "N": {
+        "DROP": {
+          "count": 39,
+          "wilson": [
+            0.4588235294117647,
+            0.35696955829119187,
+            0.5642385244088045
+          ]
+        },
+        "RETRACT": {
+          "count": 0,
+          "wilson": [
+            0.0,
+            0.0,
+            0.04324100421424198
+          ]
+        },
+        "REPEAT": {
+          "count": 27,
+          "wilson": [
+            0.3176470588235294,
+            0.228400568126656,
+            0.42266379811618515
+          ]
+        },
+        "DEPEND": {
+          "count": 19,
+          "wilson": [
+            0.2235294117647059,
+            0.14803142707080857,
+            0.32293712820059584
+          ]
+        },
+        "n": 85,
+        "active": [
+          0.5411764705882353,
+          0.4357614755911955,
+          0.6430304417088081
+        ]
+      },
+      "V": {
+        "DROP": {
+          "count": 3,
+          "wilson": [
+            0.03571428571428571,
+            0.012219447773066126,
+            0.09981858432106694
+          ]
+        },
+        "RETRACT": {
+          "count": 17,
+          "wilson": [
+            0.20238095238095238,
+            0.1303734963013758,
+            0.30042011401537616
+          ]
+        },
+        "REPEAT": {
+          "count": 53,
+          "wilson": [
+            0.6309523809523809,
+            0.5241504160580661,
+            0.7263003954025629
+          ]
+        },
+        "DEPEND": {
+          "count": 11,
+          "wilson": [
+            0.13095238095238096,
+            0.07472144544944861,
+            0.21946263134332386
+          ]
+        },
+        "n": 84,
+        "active": [
+          0.7619047619047619,
+          0.6606473307381485,
+          0.8402542921831097
+        ]
+      }
+    },
+    "paired_mcnemar_active": {
+      "D_vs_N_active": {
+        "b": 33.0,
+        "c": 3.0,
+        "n_discordant": 36.0,
+        "p_value": 2.2721360437572002e-07
+      },
+      "D_vs_V_active": {
+        "b": 15.0,
+        "c": 4.0,
+        "n_discordant": 19.0,
+        "p_value": 0.0192108154296875
+      },
+      "V_vs_N_active": {
+        "b": 29.0,
+        "c": 11.0,
+        "n_discordant": 40.0,
+        "p_value": 0.006426576095691416
+      }
+    },
+    "n_seeds": 85
+  },
+  "t2": {
+    "n_t2": 762,
+    "transitions": {
+      "DROP": {
+        "D": {
+          "DROP": 16,
+          "RETRACT": 2,
+          "REPEAT": 4,
+          "DEPEND": 27
+        },
+        "N": {
+          "DROP": 42,
+          "RETRACT": 0,
+          "REPEAT": 3,
+          "DEPEND": 4
+        },
+        "V": {
+          "DROP": 2,
+          "RETRACT": 7,
+          "REPEAT": 33,
+          "DEPEND": 7
+        }
+      },
+      "RETRACT": {
+        "D": {
+          "DROP": 5,
+          "RETRACT": 8,
+          "REPEAT": 0,
+          "DEPEND": 6
+        },
+        "N": {
+          "DROP": 11,
+          "RETRACT": 6,
+          "REPEAT": 2,
+          "DEPEND": 0
+        },
+        "V": {
+          "DROP": 7,
+          "RETRACT": 10,
+          "REPEAT": 2,
+          "DEPEND": 0
+        }
+      },
+      "REPEAT": {
+        "D": {
+          "DROP": 9,
+          "RETRACT": 1,
+          "REPEAT": 15,
+          "DEPEND": 66
+        },
+        "N": {
+          "DROP": 37,
+          "RETRACT": 0,
+          "REPEAT": 42,
+          "DEPEND": 12
+        },
+        "V": {
+          "DROP": 15,
+          "RETRACT": 11,
+          "REPEAT": 54,
+          "DEPEND": 11
+        }
+      },
+      "DEPEND": {
+        "D": {
+          "DROP": 14,
+          "RETRACT": 1,
+          "REPEAT": 13,
+          "DEPEND": 67
+        },
+        "N": {
+          "DROP": 39,
+          "RETRACT": 1,
+          "REPEAT": 17,
+          "DEPEND": 38
+        },
+        "V": {
+          "DROP": 7,
+          "RETRACT": 12,
+          "REPEAT": 45,
+          "DEPEND": 31
+        }
+      }
+    },
+    "seed_cluster_bootstrap_active": {
+      "P_active|DROP,D": {
+        "mean": 0.6326530612244898,
+        "ci_low": 0.49056603773584906,
+        "ci_high": 0.7659574468085106,
+        "n_seeds": 42.0
+      },
+      "P_active|DROP,N": {
+        "mean": 0.14285714285714285,
+        "ci_low": 0.0425531914893617,
+        "ci_high": 0.26,
+        "n_seeds": 42.0
+      },
+      "P_active|DROP,V": {
+        "mean": 0.8163265306122449,
+        "ci_low": 0.6808510638297872,
+        "ci_high": 0.9361702127659575,
+        "n_seeds": 42.0
+      },
+      "P_active|RETRACT,D": {
+        "mean": 0.3157894736842105,
+        "ci_low": 0.11764705882352941,
+        "ci_high": 0.5,
+        "n_seeds": 17.0
+      },
+      "P_active|RETRACT,N": {
+        "mean": 0.10526315789473684,
+        "ci_low": 0.0,
+        "ci_high": 0.2777777777777778,
+        "n_seeds": 17.0
+      },
+      "P_active|RETRACT,V": {
+        "mean": 0.10526315789473684,
+        "ci_low": 0.0,
+        "ci_high": 0.2777777777777778,
+        "n_seeds": 17.0
+      },
+      "P_active|REPEAT,D": {
+        "mean": 0.8901098901098901,
+        "ci_low": 0.8260869565217391,
+        "ci_high": 0.945054945054945,
+        "n_seeds": 62.0
+      },
+      "P_active|REPEAT,N": {
+        "mean": 0.5934065934065934,
+        "ci_low": 0.4895833333333333,
+        "ci_high": 0.6976744186046512,
+        "n_seeds": 62.0
+      },
+      "P_active|REPEAT,V": {
+        "mean": 0.7142857142857143,
+        "ci_low": 0.6145833333333334,
+        "ci_high": 0.8064516129032258,
+        "n_seeds": 62.0
+      },
+      "P_active|DEPEND,D": {
+        "mean": 0.8421052631578947,
+        "ci_low": 0.7582417582417582,
+        "ci_high": 0.912621359223301,
+        "n_seeds": 67.0
+      },
+      "P_active|DEPEND,N": {
+        "mean": 0.5789473684210527,
+        "ci_low": 0.47368421052631576,
+        "ci_high": 0.6836734693877551,
+        "n_seeds": 67.0
+      },
+      "P_active|DEPEND,V": {
+        "mean": 0.8,
+        "ci_low": 0.7070707070707071,
+        "ci_high": 0.8804347826086957,
+        "n_seeds": 67.0
+      }
+    },
+    "ever_depend_count": 269,
+    "depend_then_retract": 14,
+    "note": "Primary endpoint is the actual terminal T2 label, not strongest-ever state."
+  },
+  "action_compliance": {
+    "D": {
+      "n": 340,
+      "valid": 334,
+      "compliance": 0.9823529411764705,
+      "realized": {
+        "realized_D": 335,
+        "realized_N": 4,
+        "realized_V": 1
+      }
+    },
+    "N": {
+      "n": 340,
+      "valid": 316,
+      "compliance": 0.9294117647058824,
+      "realized": {
+        "realized_N": 316,
+        "realized_D": 16,
+        "realized_V": 8
+      }
+    },
+    "V": {
+      "n": 340,
+      "valid": 332,
+      "compliance": 0.9764705882352941,
+      "realized": {
+        "realized_V": 332,
+        "realized_D": 6,
+        "realized_N": 2
+      }
+    },
+    "parse_failures": 0
+  },
+  "fallback_rates": {
+    "N": 0.0,
+    "D": 0.0,
+    "V": 0.0
+  },
+  "verification_attrition": {
+    "n_candidates": 3182,
+    "by_status": {
+      "SUPPORTED": 1498,
+      "UNVERIFIABLE": 1432,
+      "VERIFIED_FALSE": 85,
+      "AMBIGUOUS": 167
+    },
+    "parse_failures": 0,
+    "eligible_verified_false": 85
+  },
+  "primary_endpoint": "actual terminal T2 label",
+  "secondary_ever_depend": "ever_depend is secondary only"
+}
